@@ -1457,6 +1457,8 @@ public abstract class UConnection {
 
     public void setCharset(String newCharsetName) {}
 
+    public void setHoldability(int holdable) {}
+    
     public String getCharset() {
         return connectionProperties.getCharSet();
     }

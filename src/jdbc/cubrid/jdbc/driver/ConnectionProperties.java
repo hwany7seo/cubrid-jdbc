@@ -36,6 +36,7 @@ import cubrid.jdbc.jci.UConnection;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 import java.sql.SQLException;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Properties;
 import java.util.StringTokenizer;
@@ -96,9 +97,7 @@ public class ConnectionProperties {
                 String propValue = info.getProperty(propName);
                 if (propValue == null) {
                     propName = prop.getPropertyName();
-                    System.out.println("hwanyseo : propName" + propName);
                     propValue = info.getProperty(propName);
-                    System.out.println("hwanyseo : propValue" + propValue);
                 }
 
                 if (propValue != null) {
@@ -465,7 +464,12 @@ public class ConnectionProperties {
         return clientCacheSize.getValueAsInteger();
     }
     
-    public boolean getCloseCursorsAtCommit() {
-        return closeCursorsAtCommit.getValueAsBoolean();
+    public int getCloseCursorsAtCommit() {
+    	int holdability = ResultSet.CLOSE_CURSORS_AT_COMMIT;
+        if (closeCursorsAtCommit.getValueAsBoolean() == false) {
+        	holdability = ResultSet.HOLD_CURSORS_OVER_COMMIT;
+        } 
+        System.out.println("hwanyseo closeCursorsAtCommit.getValueAsBoolean():" + closeCursorsAtCommit.getValueAsBoolean());
+        return holdability;
     }
 }
