@@ -478,7 +478,7 @@ public class CUBRIDConnection implements Connection {
 
         return holdability;
     }
-
+    
     public CallableStatement prepareCall(String sql, int type, int concur, int holdable)
             throws SQLException {
         return prepareCall(sql);

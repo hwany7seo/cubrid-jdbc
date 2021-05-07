@@ -118,6 +118,11 @@ public class CUBRIDDriver implements Driver {
         debugOutput.println(line);
     }
 
+	private String GetEnvString() { 
+		String envstring = System.getenv("CUBRID_JDBC_PROP");
+		return envstring;
+    }
+	
     /*
      * java.sql.Driver interface
      */
@@ -182,7 +187,25 @@ public class CUBRIDDriver implements Driver {
         if (prop != null) {
             resolvedUrl += prop;
         }
+/*
+        if (GetEnvString() != null) { 
+        	connProperties.setProperties(info);
+        } 
+        else if ()
+        	try{
+                Path path = Paths.get("/Projects/testFile.txt");
+                Stream<String> lines = Files.lines(path);
 
+                    String content = lines.collect(Collectors.joining(System.lineSeparator()));
+                    System.out.println(content);
+                    lines.close();
+              }catch(IOException e){
+                e.printStackTrace();
+              }
+        else {
+        	connProperties.setProperties(info);
+        }
+*/
         connProperties.setProperties(info);
 
         dummy = connProperties.getAltHosts();

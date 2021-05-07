@@ -96,11 +96,14 @@ public class ConnectionProperties {
                 String propValue = info.getProperty(propName);
                 if (propValue == null) {
                     propName = prop.getPropertyName();
+                    System.out.println("hwanyseo : propName" + propName);
                     propValue = info.getProperty(propName);
+                    System.out.println("hwanyseo : propValue" + propValue);
                 }
 
                 if (propValue != null) {
                     prop.setValue(propValue);
+                    System.out.println("hwanyseo : propValue" + propValue);
                 }
             } catch (IllegalAccessException iae) {
                 throw new CUBRIDException(
@@ -391,6 +394,8 @@ public class ConnectionProperties {
 
     IntegerConnectionProperty clientCacheSize =
             new IntegerConnectionProperty("clientCacheSize", 1, 1, 1024);
+    
+    BooleanConnectionProperty closeCursorsAtCommit = new BooleanConnectionProperty("CLOSE_CURSORS_AT_COMMIT", true);
 
     public boolean getLogOnException() {
         return logOnException.getValueAsBoolean();
@@ -458,5 +463,9 @@ public class ConnectionProperties {
 
     public int getClientCacheSize() {
         return clientCacheSize.getValueAsInteger();
+    }
+    
+    public boolean getCloseCursorsAtCommit() {
+        return closeCursorsAtCommit.getValueAsBoolean();
     }
 }
