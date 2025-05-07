@@ -30,9 +30,14 @@ public class DatabaseMetaDataGetSchema {
         	CUBRIDDriver cubridDriver = new CUBRIDDriver();
         	Connection conn = cubridDriver.connect(URL, prop);
             DatabaseMetaData metadata = conn.getMetaData();
-            ResultSet tables = metadata.getSchemas();
-            while (tables.next()) {
-                System.out.println(tables.getString(TABLE_SCHEMA));
+            ResultSet pk = metadata.getPrimaryKeys(null, null, "public.game");
+            String[] names = {"TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "TABLE_TYPE", "REMARKS"};
+            
+            ResultSet rs = metadata.getSchemas();
+            while(rs.next()) {
+                String catalog = rs.getString("TABLE_CATALOG");
+                String schema = rs.getString("TABLE_SCHEM");
+                System.out.println("Catalog : " + catalog + ", Schema : " + schema);
             }
         } catch (Exception e) {
             e.printStackTrace();

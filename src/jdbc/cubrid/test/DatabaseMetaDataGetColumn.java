@@ -6,8 +6,24 @@ import java.util.Properties;
 import cubrid.jdbc.driver.*;
 
 public class DatabaseMetaDataGetColumn {
-    private final String URL = "jdbc:cubrid:192.168.2.33:33000:demodb:dba::";
+    private final String URL = "jdbc:cubrid:192.168.2.32:33000:demodb:dba::";
 
+    String[] names = {
+            "PKTABLE_CAT",
+            "PKTABLE_SCHEM",
+            "PKTABLE_NAME",
+            "PKCOLUMN_NAME",
+            "FKTABLE_CAT",
+            "FKTABLE_SCHEM",
+            "FKTABLE_NAME",
+            "FKCOLUMN_NAME",
+            "KEY_SEQ",
+            "UPDATE_RULE",
+            "DELETE_RULE",
+            "FK_NAME",
+            "PK_NAME",
+            "DEFERRABILITY"
+        };
     public static void main(String[] args) {
         // make table, input want table count create.
         new DatabaseMetaDataGetColumn().run(1000);
@@ -33,10 +49,11 @@ public class DatabaseMetaDataGetColumn {
         	ResultSet rs = metaData.getImportedKeys(null, null, "PUBLIC.game");
         	
         	while(rs.next()) {
-            	String pkTableCatalog = rs.getString("PKTABLE_CAT");
-            	System.out.println("pkTableCatalog = " + pkTableCatalog);
-                String pkTableSchema = rs.getString("PKTABLE_SCHEM");
-                System.out.println("pkTableSchema = " + pkTableSchema);
+        	    System.out.println("read data");
+        	    for (int i=0; i < names.length; i++) {
+        	        String data = rs.getString(names[i]);
+        	        System.out.println(names[i] + " : " + data);
+        	    }
         	}
         } catch (Exception e) {
             e.printStackTrace();

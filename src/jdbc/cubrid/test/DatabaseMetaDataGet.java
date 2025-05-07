@@ -31,8 +31,6 @@ public class DatabaseMetaDataGet {
         	Connection conn = cubridDriver.connect(URL, prop);
         	DatabaseMetaData metaData = conn.getMetaData();
         	CUBRIDDatabaseMetaData cubMetaData = (CUBRIDDatabaseMetaData) metaData;
-        	ResultSet tables = metaData.getTables(TABLE_SCHEMA, TABLE_NAME, TABLE_SCHEMA, TABLE_TYPES);
-        	
             ResultSet columns = metaData.getColumns(null, null, "public.athlete", null);
             cubMetaData.getColumns(null, null, "public.athlete", null);
             while (columns.next()){
@@ -45,6 +43,55 @@ public class DatabaseMetaDataGet {
                System.out.println("Data type name: "+columns.getString("TYPE_NAME"));
                System.out.println(" ");
             }
+            String[] names = {"TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "TABLE_TYPE", "REMARKS"};
+            ResultSet tables = conn.getMetaData().getTables(null, null, null, new String[]{"TABLE"});
+            while(tables.next()) {
+                System.out.println("==============getTables==============");
+                for (int i=0; i < names.length; i++) {
+                    String data = tables.getString(names[i]);
+                    System.out.println(names[i] + " : " + data);
+                }
+            }
+            
+            String[] pkNames = {
+                    "TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "COLUMN_NAME", "KEY_SEQ", "PK_NAME"
+                };
+            ResultSet pk = conn.getMetaData().getPrimaryKeys(null, null, "PUBLIC.game");
+            while(pk.next()) {
+                System.out.println("==============getPrimaryKeys==============");
+                for (int i=0; i < pkNames.length; i++) {
+                    String data = pk.getString(pkNames[i]);
+                    System.out.println(pkNames[i] + " : " + data);
+                }
+            }
+            
+            String[] importNames = {
+                    "PKTABLE_CAT",
+                    "PKTABLE_SCHEM",
+                    "PKTABLE_NAME",
+                    "PKCOLUMN_NAME",
+                    "FKTABLE_CAT",
+                    "FKTABLE_SCHEM",
+                    "FKTABLE_NAME",
+                    "FKCOLUMN_NAME",
+                    "KEY_SEQ",
+                    "UPDATE_RULE",
+                    "DELETE_RULE",
+                    "FK_NAME",
+                    "PK_NAME",
+                    "DEFERRABILITY"
+                };
+            
+            ResultSet importkey = conn.getMetaData().getImportedKeys(null, null, "PUBLIC.game");
+            while(importkey.next()) {
+                System.out.println("==============getImportedKeys==============");
+                for (int i=0; i < pkNames.length; i++) {
+                    String data = importkey.getString(importNames[i]);
+                    System.out.println(importNames[i] + " : " + data);
+                }
+            }
+            
+            
         } catch (Exception e) {
             e.printStackTrace();
         }
