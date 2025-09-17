@@ -15,7 +15,7 @@ import cubrid.jdbc.log.BasicLogger;
 import cubrid.jdbc.log.Log;
 
 public class ExecuteQuery2 {
-    private static final String URL = "jdbc:CUBRID:192.168.2.33:33120:mdb:::";
+    private static final String URL = "jdbc:CUBRID:192.168.2.32:33000:demodb:::";
     private static BasicLogger log;
     protected static ConnectionProperties connectionProperties = new ConnectionProperties();
     
