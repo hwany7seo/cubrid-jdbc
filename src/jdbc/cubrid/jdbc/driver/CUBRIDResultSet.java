@@ -257,6 +257,25 @@ public class CUBRIDResultSet implements ResultSet {
             return false;
         }
 
+        int errorCode = error.getErrorCode();
+        if (errorCode < 0) {
+            switch (errorCode) {
+                case UErrorCode.ER_DBMS:
+                case UErrorCode.ER_COMMUNICATION:
+                case UErrorCode.ER_ILLEGAL_DATA_SIZE:
+                case UErrorCode.CAS_ER_DBMS:
+                case UErrorCode.CAS_ER_COMMUNICATION:
+                    synchronized (u_stmt) {
+                        u_stmt.closeResult();
+                    }
+                    current_row = 0;
+                    is_closed = true;
+                    throw con.createCUBRIDException(error);
+                default:
+                    break;
+            }
+        }
+
         return true;
     }
 
