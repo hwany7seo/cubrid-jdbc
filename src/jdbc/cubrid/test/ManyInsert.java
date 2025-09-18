@@ -54,9 +54,17 @@ public class ManyInsert {
         try {
             Statement stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT * FROM many_insert");
-            while (rs.next()) {
-                System.out.println("ID: " + rs.getInt("id"));
-                System.out.println("Name: " + rs.getString("name"));
+            try {
+                while (rs.next()) {
+                    System.out.println("ID: " + rs.getInt("id"));
+                    System.out.println("Name: " + rs.getString("name"));
+                }
+            } catch (Exception e) {
+                System.out.println("Error: " + e.getMessage());
+                while (rs.next()) {
+                    System.out.println("ID: " + rs.getInt("id"));
+                    System.out.println("Name: " + rs.getString("name"));
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -72,10 +80,10 @@ public class ManyInsert {
                 return;
             }
             
-            createTable(conn);
-            insertMany(conn);
-            // selectCount(conn);
-            // selectAll(conn);
+            // createTable(conn);
+            // insertMany(conn);
+            selectCount(conn);
+            selectAll(conn);
         } catch (Exception e) {
             e.printStackTrace();
         }
