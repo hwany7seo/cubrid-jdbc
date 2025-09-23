@@ -258,7 +258,7 @@ public class CUBRIDResultSet implements ResultSet {
         }
 
         int errorCode = error.getErrorCode();
-        if (errorCode < 0) {
+        if (errorCode != UErrorCode.ER_NO_ERROR) {
             switch (errorCode) {
                 case UErrorCode.ER_DBMS:
                 case UErrorCode.ER_COMMUNICATION:
