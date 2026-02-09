@@ -6,7 +6,7 @@ import cubrid.jdbc.driver.*;
 public class PlanTest2 {
 
     private static final String CLASS_NAME = "cubrid.jdbc.driver.CUBRIDDriver";
-    private static final String CONNECTION_URL = "jdbc:cubrid:192.168.2.32:33000:demodb:dba::";
+    private static final String CONNECTION_URL = "jdbc:cubrid:192.168.2.58:30000:demodb:dba::";
     private static final String SHOW_FULL_COLUMNS = "show full columns from temp";
 
     public static void main(String arg[]) throws Exception {

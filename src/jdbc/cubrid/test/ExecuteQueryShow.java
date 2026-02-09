@@ -6,7 +6,7 @@ import java.util.Properties;
 import cubrid.jdbc.driver.*;
 import cubrid.sql.CUBRIDOIDImpl;
 
-public class ExecuteQuery {
+public class ExecuteQueryShow {
     private static final String URL = "jdbc:CUBRID:192.168.2.32:33000:demodb:::";
 
     public static void main(String arg[]) throws Exception {
@@ -29,7 +29,7 @@ public class ExecuteQuery {
     private static void runQuery(Connection conn) {
         ResultSet rs = null;
         Statement stmt = null;
-        String sql = "select * from db_class";
+        String sql = "SHOW CREATE VIEW aaaa";
         // String sql = "select target_class from db_trigger";
 //        String sql =
 //                "SELECT unique_name, "

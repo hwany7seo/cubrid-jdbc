@@ -6,7 +6,7 @@ import cubrid.jdbc.driver.*;
 public class PlanTest {
 
     private static final String CLASS_NAME = "cubrid.jdbc.driver.CUBRIDDriver";
-    private static final String CONNECTION_URL = "jdbc:cubrid:192.168.2.33:33000:demodb:dba::";
+    private static final String CONNECTION_URL = "jdbc:cubrid:192.168.2.53:36000:shard1:shard:1234:";
     private static final String SHOW_FULL_COLUMNS = "show full columns from temp";
 
     public static void main(String arg[]) throws Exception {
@@ -24,9 +24,9 @@ public class PlanTest {
             ResultSet rs = meta.getTypeInfo();
             PreparedStatement pstmt;
             conn.setAutoCommit(false);
-            String sql = "SELECT /*+ RECOMPILE */ * FROM dba.code";
-            String sql2 = "SELECT /*+ RECOMPILE */ * FROM dba.game";
-            String sql3 = "SELECT /*+ RECOMPILE */ * FROM dba.nation";
+            String sql = "SELECT /*+ RECOMPILE */ * FROM public.code /*+ shard_id(1) */";
+            String sql2 = "SELECT /*+ RECOMPILE */ * FROM public.game /*+ shard_id(1) */";
+            String sql3 = "SELECT /*+ RECOMPILE */ * FROM public.nation /*+ shard_id(1) */";
 
             pstmt = conn.prepareStatement(sql);
             pstmt = conn.prepareStatement(sql2);
@@ -35,7 +35,7 @@ public class PlanTest {
             ((CUBRIDStatement) pstmt).setQueryInfo(true);
             boolean ret = pstmt.execute();
             System.out.println("ret : " + ret);
-            //rs = pstmt.executeQuery();
+            rs = pstmt.executeQuery();
             String plan = ((CUBRIDStatement) pstmt).getQueryplan();
             System.out.println("plan : " + plan);
             while (rs.next()) {

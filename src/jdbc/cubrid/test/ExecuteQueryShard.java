@@ -6,8 +6,8 @@ import java.util.Properties;
 import cubrid.jdbc.driver.*;
 import cubrid.sql.CUBRIDOIDImpl;
 
-public class ExecuteQuery {
-    private static final String URL = "jdbc:CUBRID:192.168.2.32:33000:demodb:::";
+public class ExecuteQueryShard {
+    private static final String URL = "jdbc:CUBRID:192.168.2.53:36000:shard1:::";
 
     public static void main(String arg[]) throws Exception {
         Connection conn = null;
@@ -15,8 +15,8 @@ public class ExecuteQuery {
         Statement stmt = null;
         try {
             Properties prop = new Properties();
-            prop.put("user", "dba");
-            prop.put("password", "");
+            prop.put("user", "shard");
+            prop.put("password", "1234");
             //prop.put("validSql", "select 1|select 2");
             CUBRIDDriver cubridDriver = new CUBRIDDriver();
             conn = cubridDriver.connect(URL, prop);
@@ -29,7 +29,7 @@ public class ExecuteQuery {
     private static void runQuery(Connection conn) {
         ResultSet rs = null;
         Statement stmt = null;
-        String sql = "select * from db_class";
+        String sql = "select 2 /*+ shard_id(1) */";
         // String sql = "select target_class from db_trigger";
 //        String sql =
 //                "SELECT unique_name, "

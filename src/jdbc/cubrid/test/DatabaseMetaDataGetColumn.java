@@ -51,6 +51,8 @@ public class DatabaseMetaDataGetColumn {
         	while(rs.next()) {
         	    System.out.println("read data");
         	    for (int i=0; i < names.length; i++) {
+        	        System.out.println("names.length : " + names.length);
+        	        System.out.println("i : " + i);
         	        String data = rs.getString(names[i]);
         	        System.out.println(names[i] + " : " + data);
         	    }
