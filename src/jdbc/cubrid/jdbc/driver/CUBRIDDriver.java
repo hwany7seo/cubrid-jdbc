@@ -68,7 +68,13 @@ public class CUBRIDDriver implements Driver {
     public static final int patch_version;
 
     static {
-        StringTokenizer st = new StringTokenizer(version_string, ".");
+        StringTokenizer st;
+        if (version_string.equals("@JDBC_DRIVER_VERSION_STRING@")) {
+            st = new StringTokenizer("11.0.0.0001", ".");
+        } else {
+            st = new StringTokenizer(version_string, ".");
+        }
+
         if (st.countTokens() != 4) {
             throw new RuntimeException("Could not parse version_string: " + version_string);
         }
