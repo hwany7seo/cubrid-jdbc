@@ -7,7 +7,7 @@ import cubrid.jdbc.driver.*;
 import cubrid.sql.CUBRIDOIDImpl;
 
 public class DBeaverUserTest {
-    private static final String URL = "jdbc:CUBRID:192.168.3.80:33000:demodb:::";
+    private static final String URL = "jdbc:CUBRID:192.168.3.81:33000:demodb:::";
 
     public static void main(String arg[]) throws Exception {
         Connection conn = null;
@@ -15,72 +15,109 @@ public class DBeaverUserTest {
             Properties prop = new Properties();
             prop.put("user", "dba");
             prop.put("password", "");
-            //prop.put("validSql", "select 1|select 2");
             CUBRIDDriver cubridDriver = new CUBRIDDriver();
             conn = cubridDriver.connect(URL, prop);
             runQuery(conn);
         } catch (Exception e) {
             e.printStackTrace();
-        }
+        } finally {
+        	if (conn != null) conn.close();
+		}
     }
     
     private static void runQuery(Connection conn) {
         ResultSet rs = null;
-        PreparedStatement pstmt = null;
-        boolean ret = false;
-        String sql = "select t.groups.name from db_user join table(groups) as t(groups) where name = 'DBA'";
-
+        String sql = "select * from db_charset";
         System.out.println(sql);
-        try {
-        	pstmt = conn.prepareStatement("select t.groups.name from db_user join table(groups) as t(groups) where name = ?");
-        	pstmt.setString(1, "DBA");
-        	ret = pstmt.execute();
-        	if (ret) {
-        		rs = pstmt.getResultSet();
-	            if (rs != null) {
-		            ResultSetMetaData meta = rs.getMetaData();
-		            int count = meta.getColumnCount();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        	pstmt.execute();
+        	rs = pstmt.getResultSet();
+        	if (rs != null) {
+	        	try {
 		            while (rs.next()) {
-		            	System.out.println("0: " + rs.getString(0));
-		            	System.out.println("1: " + rs.getString(0));
-		            	
-		                for (int j = 1; j < count + 1; j++) {
-		                    System.out.println("Columns : " + meta.getColumnName(j));
-		                    System.out.println("Columns isAutoIncrement : " + meta.isAutoIncrement(j));
-		                    Object obj = rs.getObject(j);
-		                    if (obj != null) {
-		                        if (obj instanceof CUBRIDOIDImpl) {
-		                            System.out.println("Columns value : " + obj.getClass().getName());
-		                            System.out.println("Columns value : " + String.valueOf(obj));
-		                        } else {
-		                            System.out.println("Columns value : " + String.valueOf(obj));
-		                        }
-		                    }
-		                }
+		            	int id = rs.getInt(1);
+		            	String name = rs.getString(2);
+		            	System.out.println("id : " + id);
+		            	System.out.println("name : " + name);
 		            }
-	            }
-        	} else {
-		        int updateCount = pstmt.getUpdateCount();
-		        if (updateCount == -1) {
-		            System.out.println("nothing");
-		        } else {
-		            System.out.println("updateCount : " + updateCount);
-		        }
+	        	} catch (Exception e) {
+	        		e.printStackTrace();
+				} finally {
+					rs.close();
+				} 
         	}
-    
-        } catch (SQLException e) {
-            e.printStackTrace();
         } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            try {
-                if (rs != null) rs.close();
-                if (pstmt != null) pstmt.close();
-                if (conn != null) conn.close();
-            } catch (SQLException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-        }
+        	e.printStackTrace();
+		}
+        
+        sql = "select db_user.name, user_group.name from db_user, table(groups) as groups_tb(user_group) where db_user.name = ?";
+        System.out.println(sql);
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        	pstmt.setString(1, "DBA");
+        	pstmt.execute();
+        	rs = pstmt.getResultSet();
+        	if (rs != null) {
+	        	try {
+		            while (rs.next()) {
+		            	String userName = rs.getString(1);
+		            	String groupName = rs.getString(2);
+		            	System.out.println("userName : " + userName);
+		            	System.out.println("groupName : " + groupName);
+		            }
+	        	} catch (Exception e) {
+	        		e.printStackTrace();
+				} finally {
+					rs.close();
+				} 
+        	}
+        } catch (Exception e) {
+        	e.printStackTrace();
+		}
+        
+        sql = "select * from db_user";
+        System.out.println(sql);
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        	pstmt.execute();
+        	rs = pstmt.getResultSet();
+        	if (rs != null) {
+	        	try {
+		            while (rs.next()) {
+		            	String name = rs.getString(1);
+		            	int id = rs.getInt("id");
+		            	
+		            	System.out.println("name : " + name);
+		            	System.out.println("id : " + id);
+		            }
+	        	} catch (Exception e) {
+	        		e.printStackTrace();
+				} finally {
+					rs.close();
+				}
+        	}
+        } catch (Exception e) {
+        	e.printStackTrace();
+		}
+        
+        sql = "select t.groups.name from db_user join table(groups) as t(groups) where name = ?";
+        System.out.println(sql);
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        	pstmt.setString(1, "DBA");
+        	pstmt.execute();
+        	rs = pstmt.getResultSet();
+        	if (rs != null) {
+	        	try {
+		            while (rs.next()) {
+		            	String name = rs.getString(1);
+		            	System.out.println("name : " + name);
+		            }
+	        	} catch (Exception e) {
+	        		e.printStackTrace();
+				} finally {
+					rs.close();
+				} 
+        	}
+        } catch (Exception e) {
+        	e.printStackTrace();
+		}
     }
 }

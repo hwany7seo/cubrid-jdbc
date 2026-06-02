@@ -5,12 +5,12 @@ import java.util.Properties;
 
 import cubrid.jdbc.driver.CUBRIDDriver;
 
-public class DummyTableMaker {
+public class ExecuteBatch {
 	private final String URL = "jdbc:cubrid:192.168.2.32:33000:demodb:dba::";
 
 	public static void main(String[] args) {
 		// make table, input want table count create.
-		new DummyTableMaker().run(1000);
+		new ExecuteBatch().run(1000);
 	}
 
 	private void run(int count) {
