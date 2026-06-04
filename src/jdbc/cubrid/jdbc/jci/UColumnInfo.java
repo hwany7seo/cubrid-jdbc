@@ -274,6 +274,10 @@ public class UColumnInfo {
                 return "java.sql.Blob";
             case UUType.U_TYPE_CLOB:
                 return "java.sql.Clob";
+            case UUType.U_TYPE_BFILE:
+                return "cubrid.jdbc.driver.CUBRIDBfile";
+            case UUType.U_TYPE_CFILE:
+                return "cubrid.jdbc.driver.CUBRIDCfile";
             default:
                 return "";
         }
@@ -328,6 +332,10 @@ public class UColumnInfo {
                 return "java.sql.Blob[]";
             case UUType.U_TYPE_CLOB:
                 return "java.sql.Clob[]";
+            case UUType.U_TYPE_BFILE:
+                return "cubrid.jdbc.driver.CUBRIDBfile[]";
+            case UUType.U_TYPE_CFILE:
+                return "cubrid.jdbc.driver.CUBRIDCfile[]";
             default:
                 break;
         }

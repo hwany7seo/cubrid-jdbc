@@ -32,56 +32,85 @@
 package cubrid.jdbc.driver;
 
 import java.io.IOException;
-import java.io.OutputStream;
+import java.io.Writer;
 import java.sql.SQLException;
 
-class CUBRIDBlobOutputStream extends OutputStream {
-    private CUBRIDBlob blob;
-    private long lob_pos;
+class CUBRIDCfileWriter extends Writer {
+    private CUBRIDCfile cfile;
+    private long char_pos;
 
-    CUBRIDBlobOutputStream(CUBRIDBlob blob, long pos) {
-        this.blob = blob;
-        lob_pos = pos;
+    CUBRIDCfileWriter(CUBRIDCfile cfile, long pos) {
+        this.cfile = cfile;
+        char_pos = pos;
     }
 
     /*
-     * java.io.OutputStream interface
+     * java.io.Writer interface
      */
 
-    public synchronized void write(int b) throws IOException {
-        byte[] buf = new byte[1];
-        buf[0] = (byte) b;
-        write(buf, 0, 1);
-    }
-
     /*
-    public synchronized void write(byte[] b) throws IOException {
-    	write(b, 0, b.length);
+    public synchronized Writer append(CharSequence csq) throws IOException {
+    	write(csq.toString());
+    	return this;
     }
     */
 
-    public synchronized void write(byte[] b, int off, int len) throws IOException {
-        if (blob == null) {
-            throw new IOException();
-        }
+    /*
+    public synchronized Writer append(CharSequence csq, int start, int end)
+    		throws IOException {
+    	write(csq.subSequence(start, end).toString());
+    	return this;
+    }
+    */
 
-        if (b == null) throw new NullPointerException();
-        if (off < 0 || len < 0 || off + len > b.length) throw new IndexOutOfBoundsException();
+    /*
+    public synchronized Writer append(char c) throws IOException {
+    	write(0xffff & c);
+    	return this;
+    }
+    */
+
+    /*
+    public synchronized void write(int c) throws IOException {
+    	char[] cbuf = new char[1];
+    	cbuf[0] = (char) c;
+    	write(cbuf, 0, 1);
+    }
+    */
+
+    /*
+    public synchronized void write(char[] cbuf) throws IOException {
+    	write(cbuf, 0, cbuf.length);
+    }
+    */
+
+    /*
+    public synchronized void write(String str) throws IOException {
+    	write(str, 0, str.length());
+    }
+    */
+
+    public synchronized void write(String str, int off, int len) throws IOException {
+        if (cfile == null) throw new IOException();
+        if (str == null) throw new NullPointerException();
+        if (off < 0 || len < 0 || off + len > str.length()) throw new IndexOutOfBoundsException();
 
         try {
-            lob_pos += blob.setBytes(lob_pos, b, off, len);
+            char_pos += cfile.setString(char_pos, str, off, len);
         } catch (SQLException e) {
             throw new IOException(e.getMessage());
         }
     }
 
-    /*
-    public synchronized void flush() throws IOException {
+    public synchronized void write(char[] cbuf, int off, int len) throws IOException {
+        write(new String(cbuf, off, len));
     }
-    */
+
+    public synchronized void flush() throws IOException {}
 
     public synchronized void close() throws IOException {
         flush();
-        blob = null;
+        cfile.removeFlushableStream(this);
+        cfile = null;
     }
 }

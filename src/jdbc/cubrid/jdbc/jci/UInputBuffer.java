@@ -40,8 +40,10 @@
  */
 package cubrid.jdbc.jci;
 
+import cubrid.jdbc.driver.CUBRIDBfile;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDXid;
@@ -488,19 +490,43 @@ class UInputBuffer {
         return null;
     }
 
-    CUBRIDBlob readBlob(int packedLobHandleSize, CUBRIDConnection conn) throws UJciException {
+    /* internal BLOB: data sent as raw binary (like VARBIT) */
+    CUBRIDBlob readBlob(int dataSize, CUBRIDConnection conn) throws UJciException {
         try {
-            byte[] packedLobHandle = readBytes(packedLobHandleSize);
-            return new CUBRIDBlob(conn, packedLobHandle, true);
+            byte[] blobData = readBytes(dataSize);
+            return new CUBRIDBlob(blobData);
         } catch (Exception e) {
             throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
         }
     }
 
-    CUBRIDClob readClob(int packedLobHandleSize, CUBRIDConnection conn) throws UJciException {
+    /* internal CLOB: data sent as text (like VARCHAR) */
+    CUBRIDClob readClob(int dataSize, CUBRIDConnection conn) throws UJciException {
+        try {
+            String charset = conn.getUConnection().getCharset();
+            String value = readString(dataSize, charset);
+            return new CUBRIDClob(value, charset);
+        } catch (Exception e) {
+            throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
+        }
+    }
+
+    /* external BFILE: data sent as a packed locator handle */
+    CUBRIDBfile readBfile(int packedLobHandleSize, CUBRIDConnection conn) throws UJciException {
         try {
             byte[] packedLobHandle = readBytes(packedLobHandleSize);
-            return new CUBRIDClob(conn, packedLobHandle, conn.getUConnection().getCharset(), true);
+            return new CUBRIDBfile(conn, packedLobHandle);
+        } catch (Exception e) {
+            throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
+        }
+    }
+
+    /* external CFILE: data sent as a packed locator handle */
+    CUBRIDCfile readCfile(int packedLobHandleSize, CUBRIDConnection conn) throws UJciException {
+        try {
+            byte[] packedLobHandle = readBytes(packedLobHandleSize);
+            String charset = conn.getUConnection().getCharset();
+            return new CUBRIDCfile(conn, packedLobHandle, charset);
         } catch (Exception e) {
             throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
         }

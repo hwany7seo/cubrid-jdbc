@@ -40,7 +40,9 @@
  */
 package cubrid.jdbc.jci;
 
+import cubrid.jdbc.driver.CUBRIDBfile;
 import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
 import java.io.IOException;
 
@@ -140,10 +142,10 @@ public class UBindParameter extends UParameter {
         for (int i = 0; i < number; i++) {
             if (values[i] == null) {
                 continue;
-            } else if (values[i] instanceof CUBRIDBlob) {
-                ((CUBRIDBlob) values[i]).flushFlushableStreams();
-            } else if (values[i] instanceof CUBRIDClob) {
-                ((CUBRIDClob) values[i]).flushFlushableStreams();
+            } else if (values[i] instanceof CUBRIDBfile) {
+                ((CUBRIDBfile) values[i]).flushFlushableStreams();
+            } else if (values[i] instanceof CUBRIDCfile) {
+                ((CUBRIDCfile) values[i]).flushFlushableStreams();
             }
         }
     }

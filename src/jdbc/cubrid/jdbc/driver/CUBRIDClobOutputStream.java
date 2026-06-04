@@ -69,7 +69,8 @@ class CUBRIDClobOutputStream extends OutputStream {
         if (off < 0 || len < 0 || off + len > b.length) throw new IndexOutOfBoundsException();
 
         try {
-            lob_pos += clob.setBytes(lob_pos, b, off, len);
+            String str = new String(b, off, len);
+            lob_pos += clob.setString(lob_pos, str);
         } catch (SQLException e) {
             throw new IOException(e.getMessage());
         }
@@ -82,7 +83,6 @@ class CUBRIDClobOutputStream extends OutputStream {
 
     public synchronized void close() throws IOException {
         flush();
-        clob.removeFlushableStream(this);
         clob = null;
     }
 }

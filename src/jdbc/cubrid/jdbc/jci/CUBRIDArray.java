@@ -116,6 +116,12 @@ class CUBRIDArray {
             case UUType.U_TYPE_CLOB:
                 internalArray = (Object[]) (new Clob[length]);
                 break;
+            case UUType.U_TYPE_BFILE:
+                internalArray = new Object[length];
+                break;
+            case UUType.U_TYPE_CFILE:
+                internalArray = new Object[length];
+                break;
             case UUType.U_TYPE_NULL:
             case UUType.U_TYPE_SET:
             case UUType.U_TYPE_MULTISET:

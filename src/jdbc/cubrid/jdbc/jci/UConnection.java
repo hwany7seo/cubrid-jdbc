@@ -1020,7 +1020,7 @@ public abstract class UConnection {
     }
 
     /* LOB protocols */
-    // UFunctionCode.NEW_LOB
+    // UFunctionCode.NEW_LOBFILE
     public synchronized byte[] lobNew(int lob_type) {
         errorHandler = new UError(this);
         if (isClosed == true) {
@@ -1032,7 +1032,7 @@ public abstract class UConnection {
             checkReconnect();
             if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) return null;
 
-            outBuffer.newRequest(output, UFunctionCode.NEW_LOB);
+            outBuffer.newRequest(output, UFunctionCode.NEW_LOBFILE);
             outBuffer.addInt(lob_type);
 
             UInputBuffer inBuffer;
@@ -1061,7 +1061,7 @@ public abstract class UConnection {
         return null;
     }
 
-    // UFunctionCode.WRITE_LOB
+    // UFunctionCode.WRITE_LOBFILE
     public synchronized int lobWrite(
             byte[] packedLobHandle, long offset, byte[] buf, int start, int len) {
         errorHandler = new UError(this);
@@ -1074,7 +1074,7 @@ public abstract class UConnection {
             checkReconnect();
             if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) return -1;
 
-            outBuffer.newRequest(output, UFunctionCode.WRITE_LOB);
+            outBuffer.newRequest(output, UFunctionCode.WRITE_LOBFILE);
             outBuffer.addBytes(packedLobHandle);
             outBuffer.addLong(offset);
             outBuffer.addBytes(buf, start, len);
@@ -1101,7 +1101,7 @@ public abstract class UConnection {
         return -1;
     }
 
-    // UFunctionCode.READ_LOB
+    // UFunctionCode.READ_LOBFILE
     public synchronized int lobRead(
             byte[] packedLobHandle, long offset, byte[] buf, int start, int len) {
         errorHandler = new UError(this);
@@ -1114,7 +1114,7 @@ public abstract class UConnection {
             checkReconnect();
             if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) return -1;
 
-            outBuffer.newRequest(output, UFunctionCode.READ_LOB);
+            outBuffer.newRequest(output, UFunctionCode.READ_LOBFILE);
             outBuffer.addBytes(packedLobHandle);
             outBuffer.addLong(offset);
             outBuffer.addInt(len);

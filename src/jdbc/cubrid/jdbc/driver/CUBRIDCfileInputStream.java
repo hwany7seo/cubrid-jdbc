@@ -35,15 +35,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.sql.SQLException;
 
-class CUBRIDClobInputStream extends InputStream {
-    private CUBRIDClob clob;
+class CUBRIDCfileInputStream extends InputStream {
+    private CUBRIDCfile cfile;
     private long lob_pos;
     private long lob_length;
 
-    CUBRIDClobInputStream(CUBRIDClob clob) throws SQLException {
-        this.clob = clob;
+    CUBRIDCfileInputStream(CUBRIDCfile cfile) throws SQLException {
+        this.cfile = cfile;
         lob_pos = 1;
-        lob_length = clob.length();
+        lob_length = cfile.getLobHandle().getLobSize();
     }
 
     /*
@@ -69,7 +69,7 @@ class CUBRIDClobInputStream extends InputStream {
     */
 
     public synchronized int read(byte[] b, int off, int len) throws IOException {
-        if (clob == null) return -1;
+        if (cfile == null) return -1;
 
         if (b == null) throw new NullPointerException();
         if (off < 0 || len < 0 || off + len > b.length) throw new IndexOutOfBoundsException();
@@ -82,7 +82,7 @@ class CUBRIDClobInputStream extends InputStream {
                 if (len < 0) len = 0;
             }
 
-            byte[] buf = clob.getSubString(lob_pos, len).getBytes();
+            byte[] buf = cfile.getBytes(lob_pos, len);
             System.arraycopy(buf, 0, b, off, buf.length);
             read_len = buf.length;
         } catch (SQLException e) {
@@ -91,7 +91,7 @@ class CUBRIDClobInputStream extends InputStream {
 
         lob_pos += read_len;
         if (read_len < len || lob_pos > lob_length) {
-            clob = null;
+            cfile = null;
         }
 
         return read_len;
@@ -100,12 +100,12 @@ class CUBRIDClobInputStream extends InputStream {
     public synchronized long skip(long n) throws IOException {
         if (n <= 0) return 0;
 
-        if (clob == null) return 0;
+        if (cfile == null) return 0;
 
         long lob_remains_len = lob_length - lob_pos + 1;
         if (n > lob_remains_len) {
             n = lob_remains_len;
-            clob = null;
+            cfile = null;
         }
 
         lob_pos += n;
@@ -114,7 +114,7 @@ class CUBRIDClobInputStream extends InputStream {
     }
 
     public synchronized void close() throws IOException {
-        clob = null;
+        cfile = null;
     }
 
     /*

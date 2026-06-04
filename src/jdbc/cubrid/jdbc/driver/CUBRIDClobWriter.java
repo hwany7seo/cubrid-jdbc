@@ -110,7 +110,6 @@ class CUBRIDClobWriter extends Writer {
 
     public synchronized void close() throws IOException {
         flush();
-        clob.removeFlushableStream(this);
         clob = null;
     }
 }

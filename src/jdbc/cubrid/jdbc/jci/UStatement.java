@@ -40,7 +40,9 @@
  */
 package cubrid.jdbc.jci;
 
+import cubrid.jdbc.driver.CUBRIDBfile;
 import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDOutResultSet;
 import cubrid.sql.CUBRIDOID;
@@ -511,6 +513,10 @@ public class UStatement {
         bindValue(index, UUType.U_TYPE_BLOB, blob);
     }
 
+    public void bindBfile(int index, CUBRIDBfile bfile) {
+        bindValue(index, UUType.U_TYPE_BFILE, bfile);
+    }
+
     public void bindClob(int index, Clob clob) {
         try {
             if (relatedConnection.getOracleStyleEmpltyString()
@@ -522,6 +528,10 @@ public class UStatement {
             relatedConnection.logException(e);
         }
         bindValue(index, UUType.U_TYPE_CLOB, clob);
+    }
+
+    public void bindCfile(int index, CUBRIDCfile cfile) {
+        bindValue(index, UUType.U_TYPE_CFILE, cfile);
     }
 
     public void addBatch() {
@@ -2305,6 +2315,10 @@ public class UStatement {
                 return inBuffer.readBlob(dataSize, relatedConnection.cubridcon);
             case UUType.U_TYPE_CLOB:
                 return inBuffer.readClob(dataSize, relatedConnection.cubridcon);
+            case UUType.U_TYPE_BFILE:
+                return inBuffer.readBfile(dataSize, relatedConnection.cubridcon);
+            case UUType.U_TYPE_CFILE:
+                return inBuffer.readCfile(dataSize, relatedConnection.cubridcon);
             case UUType.U_TYPE_NULL:
                 return null;
             default:

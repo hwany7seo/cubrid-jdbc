@@ -35,26 +35,19 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.sql.SQLException;
 
-class CUBRIDClobInputStream extends InputStream {
-    private CUBRIDClob clob;
+class CUBRIDBfileInputStream extends InputStream {
+    private CUBRIDBfile bfile;
     private long lob_pos;
     private long lob_length;
 
-    CUBRIDClobInputStream(CUBRIDClob clob) throws SQLException {
-        this.clob = clob;
-        lob_pos = 1;
-        lob_length = clob.length();
+    CUBRIDBfileInputStream(CUBRIDBfile bfile, long pos, long length) throws SQLException {
+        this.bfile = bfile;
+        lob_pos = pos;
+        lob_length = pos - 1 + length;
+        if (lob_length > bfile.length() || lob_length < 0) {
+            lob_length = bfile.length();
+        }
     }
-
-    /*
-     * java.io.InputStream interface
-     */
-
-    /*
-    public int available() throws IOException {
-    	return 0;
-    }
-    */
 
     public synchronized int read() throws IOException {
         byte[] b = new byte[1];
@@ -62,14 +55,8 @@ class CUBRIDClobInputStream extends InputStream {
         else return -1;
     }
 
-    /*
-    public synchronized int read(byte[] b) throws IOException {
-    	return read(b, 0, b.length);
-    }
-    */
-
     public synchronized int read(byte[] b, int off, int len) throws IOException {
-        if (clob == null) return -1;
+        if (bfile == null) return -1;
 
         if (b == null) throw new NullPointerException();
         if (off < 0 || len < 0 || off + len > b.length) throw new IndexOutOfBoundsException();
@@ -82,7 +69,7 @@ class CUBRIDClobInputStream extends InputStream {
                 if (len < 0) len = 0;
             }
 
-            byte[] buf = clob.getSubString(lob_pos, len).getBytes();
+            byte[] buf = bfile.getBytes(lob_pos, len);
             System.arraycopy(buf, 0, b, off, buf.length);
             read_len = buf.length;
         } catch (SQLException e) {
@@ -91,7 +78,7 @@ class CUBRIDClobInputStream extends InputStream {
 
         lob_pos += read_len;
         if (read_len < len || lob_pos > lob_length) {
-            clob = null;
+            bfile = null;
         }
 
         return read_len;
@@ -99,38 +86,19 @@ class CUBRIDClobInputStream extends InputStream {
 
     public synchronized long skip(long n) throws IOException {
         if (n <= 0) return 0;
-
-        if (clob == null) return 0;
+        if (bfile == null) return 0;
 
         long lob_remains_len = lob_length - lob_pos + 1;
         if (n > lob_remains_len) {
             n = lob_remains_len;
-            clob = null;
+            bfile = null;
         }
 
         lob_pos += n;
-
         return n;
     }
 
     public synchronized void close() throws IOException {
-        clob = null;
+        bfile = null;
     }
-
-    /*
-    public void mark(int readlimit) {
-    }
-    */
-
-    /*
-    public void reset() throws IOException {
-    	throw new IOException("Not supported mark and reset operation");
-    }
-    */
-
-    /*
-    public boolean markSupported() {
-    	return false;
-    }
-    */
 }

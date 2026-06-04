@@ -785,14 +785,12 @@ public class CUBRIDConnection implements Connection {
 
     /* JDK 1.6 */
     public Blob createBlob() throws SQLException {
-        Blob blob = new CUBRIDBlob(this);
-        return blob;
+        return new CUBRIDBlob();
     }
 
     /* JDK 1.6 */
     public Clob createClob() throws SQLException {
-        Clob clob = new CUBRIDClob(this, getUConnection().getCharset());
-        return clob;
+        return new CUBRIDClob(getUConnection().getCharset());
     }
 
     private void end(boolean commit) throws SQLException {

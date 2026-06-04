@@ -80,11 +80,7 @@ public abstract class UGetTypeConvertedValue {
         if (data == null) return null;
         else if (data instanceof CUBRIDBlob) return (CUBRIDBlob) data;
         else if (data instanceof byte[]) {
-            try {
-                return new CUBRIDBlob(conn, (byte[]) data, false);
-            } catch (Exception e) {
-                throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
-            }
+            return new CUBRIDBlob((byte[]) data);
         }
         throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
     }
@@ -130,12 +126,8 @@ public abstract class UGetTypeConvertedValue {
         else if (data instanceof CUBRIDClob) return (CUBRIDClob) data;
         else if (data instanceof String) {
             try {
-                return new CUBRIDClob(
-                        conn,
-                        ((String) data).getBytes(),
-                        conn.getUConnection().getCharset(),
-                        false);
-            } catch (Exception e) {
+                return new CUBRIDClob((String) data, conn.getUConnection().getCharset());
+            } catch (java.sql.SQLException e) {
                 throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
             }
         }

@@ -40,8 +40,10 @@
  */
 package cubrid.jdbc.jci;
 
+import cubrid.jdbc.driver.CUBRIDBfile;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDLobHandle;
 import cubrid.jdbc.util.ByteArrayBuffer;
@@ -303,15 +305,39 @@ class UOutputBuffer {
         return 12;
     }
 
+    /* internal BLOB: send raw binary data (same wire format as VARBIT) */
     int addBlob(CUBRIDBlob value) throws IOException {
-        return addLob(value.getLobHandle());
+        byte[] blobData = value.getData();
+        dataBuffer.writeInt(blobData.length);
+        dataBuffer.write(blobData, 0, blobData.length);
+        return blobData.length + 4;
     }
 
+    /* internal CLOB: send text data (same wire format as VARCHAR, with null terminator) */
     int addClob(CUBRIDClob value) throws IOException {
-        return addLob(value.getLobHandle());
+        byte[] clobBytes;
+        try {
+            clobBytes = value.getDataAsBytes();
+        } catch (java.sql.SQLException e) {
+            clobBytes = new byte[0];
+        }
+        dataBuffer.writeInt(clobBytes.length + 1);
+        dataBuffer.write(clobBytes, 0, clobBytes.length);
+        dataBuffer.writeByte((byte) 0);
+        return clobBytes.length + 5;
     }
 
-    private int addLob(CUBRIDLobHandle lobHandle) throws IOException {
+    /* external BFILE: send packed locator handle */
+    int addBfile(CUBRIDBfile value) throws IOException {
+        return addLobHandle(value.getLobHandle());
+    }
+
+    /* external CFILE: send packed locator handle */
+    int addCfile(CUBRIDCfile value) throws IOException {
+        return addLobHandle(value.getLobHandle());
+    }
+
+    private int addLobHandle(CUBRIDLobHandle lobHandle) throws IOException {
         byte[] packedLobHandle = lobHandle.getPackedLobHandle();
 
         dataBuffer.writeInt(packedLobHandle.length);
@@ -479,6 +505,24 @@ class UOutputBuffer {
                     }
                     return addClob((CUBRIDClob) value);
                 }
+            case UUType.U_TYPE_BFILE:
+                if (value == null) {
+                    return addNull();
+                } else {
+                    if (!(value instanceof CUBRIDBfile)) {
+                        throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
+                    }
+                    return addBfile((CUBRIDBfile) value);
+                }
+            case UUType.U_TYPE_CFILE:
+                if (value == null) {
+                    return addNull();
+                } else {
+                    if (!(value instanceof CUBRIDCfile)) {
+                        throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
+                    }
+                    return addCfile((CUBRIDCfile) value);
+                }
             case UUType.U_TYPE_RESULTSET:
                 return addNull();
             default:
@@ -560,6 +604,8 @@ class UOutputBuffer {
             case UUType.U_TYPE_OBJECT:
             case UUType.U_TYPE_BLOB:
             case UUType.U_TYPE_CLOB:
+            case UUType.U_TYPE_BFILE:
+            case UUType.U_TYPE_CFILE:
             case UUType.U_TYPE_CHAR:
             case UUType.U_TYPE_NCHAR:
             case UUType.U_TYPE_STRING:
