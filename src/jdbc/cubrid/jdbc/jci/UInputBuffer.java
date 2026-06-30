@@ -515,7 +515,7 @@ class UInputBuffer {
     CUBRIDBfile readBfile(int packedLobHandleSize, CUBRIDConnection conn) throws UJciException {
         try {
             byte[] packedLobHandle = readBytes(packedLobHandleSize);
-            return new CUBRIDBfile(conn, packedLobHandle);
+            return new CUBRIDBfile(conn, packedLobHandle, true);
         } catch (Exception e) {
             throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
         }
@@ -525,8 +525,7 @@ class UInputBuffer {
     CUBRIDCfile readCfile(int packedLobHandleSize, CUBRIDConnection conn) throws UJciException {
         try {
             byte[] packedLobHandle = readBytes(packedLobHandleSize);
-            String charset = conn.getUConnection().getCharset();
-            return new CUBRIDCfile(conn, packedLobHandle, charset);
+            return new CUBRIDCfile(conn, packedLobHandle, conn.getUConnection().getCharset(), true);
         } catch (Exception e) {
             throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
         }

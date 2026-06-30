@@ -6,11 +6,11 @@ import java.util.Properties;
 import cubrid.jdbc.driver.CUBRIDDriver;
 
 public class ConnectWorker {
-    
-    private static final String CONNECTION_URL = "jdbc:cubrid:192.168.2.33:33000:demodb:::";
+
+    private static final String CONNECTION_URL = "jdbc:cubrid:192.168.3.30:33000:demodb:::";
     private static String USER = "dba";
     private static String PASSWORD = "";
-    
+
     public static Connection getConnect() {
         Connection conn = null;
         Properties prop = new Properties();

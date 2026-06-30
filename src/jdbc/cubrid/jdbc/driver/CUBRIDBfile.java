@@ -40,23 +40,32 @@ import java.sql.Blob;
 import java.sql.SQLException;
 import java.util.ArrayList;
 
-/**
- * CUBRID BFILE: external binary LOB stored as a file locator on the server.
- *
- * <p>This class encapsulates the former external-LOB logic that was previously in CUBRIDBlob.
- * Application code that needs to access BFILE columns should use getBFILE / setBFILE vendor APIs.
- */
 public class CUBRIDBfile implements Blob {
+    /*
+     * ======================================================================= |
+     * CONSTANT VALUES
+     * =======================================================================
+     */
+    private static final int BFILE_MAX_IO_LENGTH = 128 * 1024;
 
-    private static final int BFILE_MAX_IO_LENGTH = 128 * 1024; // 128KB at once
-
+    /*
+     * ======================================================================= |
+     * PRIVATE
+     * =======================================================================
+     */
     private CUBRIDConnection conn;
     private boolean isWritable;
+    private boolean isLobLocator;
     private CUBRIDLobHandle lobHandle;
 
     private ArrayList<java.io.Flushable> streamList = new ArrayList<java.io.Flushable>();
 
-    /* Create a new (writable) BFILE via server round-trip */
+    /*
+     * ======================================================================= |
+     * CONSTRUCTOR
+     * =======================================================================
+     */
+    // make a new bfile
     public CUBRIDBfile(CUBRIDConnection conn) throws SQLException {
         if (conn == null) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
@@ -66,22 +75,27 @@ public class CUBRIDBfile implements Blob {
 
         this.conn = conn;
         isWritable = true;
-        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BFILE, packedLobHandle, true);
+        isLobLocator = true;
+        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BFILE, packedLobHandle, isLobLocator);
     }
 
-    /* Reconstruct a BFILE from a packed locator received in a result set */
-    public CUBRIDBfile(CUBRIDConnection conn, byte[] packedLobHandle) throws SQLException {
+    // get bfile from existing result set
+    public CUBRIDBfile(CUBRIDConnection conn, byte[] packedLobHandle, boolean isLobLocator) throws SQLException {
         if (conn == null || packedLobHandle == null) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
 
         this.conn = conn;
         isWritable = false;
-        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BFILE, packedLobHandle, true);
+        this.isLobLocator = isLobLocator;
+        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BFILE, packedLobHandle, isLobLocator);
     }
 
-    /* java.sql.Blob */
-
+    /*
+     * ======================================================================= |
+     * java.sql.Blob interface
+     * =======================================================================
+     */
     public long length() throws SQLException {
         if (lobHandle == null) {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
@@ -100,7 +114,7 @@ public class CUBRIDBfile implements Blob {
             return new byte[0];
         }
 
-        pos--;
+        pos--; // pos is now offset from 0
         int real_read_len, read_len, total_read_len = 0;
 
         if (pos + length > length()) {
@@ -113,31 +127,42 @@ public class CUBRIDBfile implements Blob {
 
         byte[] buf = new byte[length];
 
-        while (length > 0) {
-            read_len = Math.min(length, BFILE_MAX_IO_LENGTH);
-            real_read_len =
-                    conn.lobRead(
-                            lobHandle.getPackedLobHandle(), pos, buf, total_read_len, read_len);
+        if (isLobLocator) {
+            while (length > 0) {
+                read_len = Math.min(length, BFILE_MAX_IO_LENGTH);
+                real_read_len =
+                        conn.lobRead(
+                                lobHandle.getPackedLobHandle(), pos, buf, total_read_len, read_len);
 
-            pos += real_read_len;
-            length -= real_read_len;
-            total_read_len += real_read_len;
+                pos += real_read_len;
+                length -= real_read_len;
+                total_read_len += real_read_len;
 
-            if (real_read_len == 0) {
-                break;
+                if (real_read_len == 0) {
+                    break;
+                }
             }
+        } else {
+            System.arraycopy(lobHandle.getPackedLobHandle(), (int) pos, buf, 0, length);
+            total_read_len = length;
         }
 
         if (total_read_len < buf.length) {
+            // In common case, this code cannot be executed
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.unknown, null);
+            // byte[]new_buf = new byte[total_read_len];
+            // System.arraycopy (buf, 0, new_buf, 0, total_read_len);
+            // return new_buf;
+        } else {
+            return buf;
         }
-        return buf;
     }
 
     public InputStream getBinaryStream() throws SQLException {
         return getBinaryStream(1, length());
     }
 
+    /* JDK 1.6 */
     public InputStream getBinaryStream(long pos, long length) throws SQLException {
         if (lobHandle == null) {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
@@ -178,7 +203,7 @@ public class CUBRIDBfile implements Blob {
                 throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
             }
 
-            pos--;
+            pos--; // pos is now offset from 0
 
             int real_write_len, write_len, total_write_len = 0;
 
@@ -231,11 +256,13 @@ public class CUBRIDBfile implements Blob {
         throw new SQLException(new java.lang.UnsupportedOperationException());
     }
 
+    /* JDK 1.6 */
     public void free() throws SQLException {
         conn = null;
         lobHandle = null;
         streamList = null;
         isWritable = false;
+        isLobLocator = true;
     }
 
     public CUBRIDLobHandle getLobHandle() {
@@ -261,8 +288,13 @@ public class CUBRIDBfile implements Blob {
         }
     }
 
-    public String toString() {
-        return lobHandle.toString();
+    public String toString() throws RuntimeException {
+        if (isLobLocator == true) {
+            return lobHandle.toString();
+        } else {
+            throw new RuntimeException(
+                    "The lob locator does not exist because the column type has changed.");
+        }
     }
 
     public boolean equals(Object obj) {

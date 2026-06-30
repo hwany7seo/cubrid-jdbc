@@ -10,7 +10,6 @@ import java.util.Properties;
 import java.util.Scanner;
 import java.util.regex.Pattern;
 
-import cubrid.jdbc.driver.*;
 import cubrid.jdbc.log.BasicLogger;
 import cubrid.jdbc.log.Log;
 

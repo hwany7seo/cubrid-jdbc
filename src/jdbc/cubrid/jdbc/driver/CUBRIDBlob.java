@@ -40,36 +40,25 @@ import java.sql.Blob;
 import java.sql.SQLException;
 import java.util.Arrays;
 
-/**
- * CUBRID internal BLOB: binary LOB stored inline in the heap page.
- *
- * <p>Data is held in a byte array and transferred over the wire as raw binary (same encoding as
- * VARBIT). This replaces the former external-locator-based CUBRIDBlob implementation; external
- * binary LOBs are now handled by {@link CUBRIDBfile}.
- */
 public class CUBRIDBlob implements Blob {
 
     private byte[] data;
 
-    /* Create an empty writable BLOB (used by Connection.createBlob) */
     public CUBRIDBlob() {
         this.data = new byte[0];
     }
 
-    /* Reconstruct a BLOB from raw bytes received in a result set */
     public CUBRIDBlob(byte[] data) {
         this.data = (data != null) ? data : new byte[0];
     }
 
-    /* java.sql.Blob */
-
     public long length() throws SQLException {
-        checkFreed();
+        checkData();
         return data.length;
     }
 
     public byte[] getBytes(long pos, int length) throws SQLException {
-        checkFreed();
+        checkData();
         if (pos < 1 || length < 0) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
@@ -84,18 +73,19 @@ public class CUBRIDBlob implements Blob {
     }
 
     public InputStream getBinaryStream() throws SQLException {
-        checkFreed();
+        checkData();
         return new ByteArrayInputStream(data);
     }
 
     public InputStream getBinaryStream(long pos, long length) throws SQLException {
-        checkFreed();
+        checkData();
         if (pos < 1 || length < 0) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
         int offset = (int) (pos - 1);
         int len = (int) Math.min(length, data.length - offset);
-        if (len < 0) len = 0;
+        if (len < 0)
+            len = 0;
         return new ByteArrayInputStream(data, offset, len);
     }
 
@@ -112,7 +102,7 @@ public class CUBRIDBlob implements Blob {
     }
 
     public int setBytes(long pos, byte[] bytes, int offset, int len) throws SQLException {
-        checkFreed();
+        checkData();
         if (pos < 1 || offset < 0 || len < 0) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
@@ -130,7 +120,7 @@ public class CUBRIDBlob implements Blob {
     }
 
     public OutputStream setBinaryStream(long pos) throws SQLException {
-        checkFreed();
+        checkData();
         if (pos < 1) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
@@ -149,7 +139,7 @@ public class CUBRIDBlob implements Blob {
     }
 
     public void truncate(long len) throws SQLException {
-        checkFreed();
+        checkData();
         if (len < 0 || len > data.length) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
@@ -160,7 +150,6 @@ public class CUBRIDBlob implements Blob {
         data = null;
     }
 
-    /** Returns the raw byte content for wire serialization. */
     public byte[] getData() {
         return data;
     }
@@ -172,7 +161,7 @@ public class CUBRIDBlob implements Blob {
         return false;
     }
 
-    private void checkFreed() throws SQLException {
+    private void checkData() throws SQLException {
         if (data == null) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }

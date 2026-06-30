@@ -43,12 +43,6 @@ import java.sql.Clob;
 import java.sql.SQLException;
 import java.util.ArrayList;
 
-/**
- * CUBRID CFILE: external character LOB stored as a file locator on the server.
- *
- * <p>This class encapsulates the former external-LOB logic that was previously in CUBRIDClob.
- * Application code that needs to access CFILE columns should use getCFILE / setCFILE vendor APIs.
- */
 public class CUBRIDCfile implements Clob {
 
     private static final int CFILE_MAX_IO_LENGTH = 128 * 1024; // 128kB at once
@@ -56,6 +50,7 @@ public class CUBRIDCfile implements Clob {
 
     private CUBRIDConnection conn;
     private boolean isWritable;
+    private boolean isLobLocator;
     private CUBRIDLobHandle lobHandle;
     private String charsetName;
 
@@ -79,7 +74,8 @@ public class CUBRIDCfile implements Clob {
 
         this.conn = conn;
         isWritable = true;
-        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_CFILE, packedLobHandle, true);
+        isLobLocator = true;
+        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_CFILE, packedLobHandle, isLobLocator);
         this.charsetName = charsetName;
 
         cfileCharPos = 0;
@@ -97,7 +93,8 @@ public class CUBRIDCfile implements Clob {
 
         this.conn = conn;
         isWritable = false;
-        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_CFILE, packedLobHandle, true);
+        this.isLobLocator = isLobLocator;
+        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_CFILE, packedLobHandle, isLobLocator);
         this.charsetName = charsetName;
 
         cfileCharPos = 0;
@@ -197,13 +194,12 @@ public class CUBRIDCfile implements Clob {
         int bytes_offset = 0;
 
         while (bytes_len > 0) {
-            int bytesWritten =
-                    conn.lobWrite(
-                            lobHandle.getPackedLobHandle(),
-                            cfileBytePos + bytes_offset,
-                            bytes,
-                            bytes_offset,
-                            Math.min(bytes_len, CFILE_MAX_IO_LENGTH));
+            int bytesWritten = conn.lobWrite(
+                    lobHandle.getPackedLobHandle(),
+                    cfileBytePos + bytes_offset,
+                    bytes,
+                    bytes_offset,
+                    Math.min(bytes_len, CFILE_MAX_IO_LENGTH));
 
             bytes_len -= bytesWritten;
             bytes_offset += bytesWritten;
@@ -250,9 +246,8 @@ public class CUBRIDCfile implements Clob {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
         }
 
-        OutputStream out =
-                new CUBRIDBufferedOutputStream(
-                        new CUBRIDCfileOutputStream(this, cfileBytePos + 1), CFILE_MAX_IO_LENGTH);
+        OutputStream out = new CUBRIDBufferedOutputStream(
+                new CUBRIDCfileOutputStream(this, cfileBytePos + 1), CFILE_MAX_IO_LENGTH);
         addFlushableStream(out);
         return out;
     }
@@ -272,8 +267,7 @@ public class CUBRIDCfile implements Clob {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
         }
 
-        Writer out =
-                new CUBRIDBufferedWriter(new CUBRIDCfileWriter(this, pos), CFILE_MAX_IO_CHARS);
+        Writer out = new CUBRIDBufferedWriter(new CUBRIDCfileWriter(this, pos), CFILE_MAX_IO_CHARS);
         addFlushableStream(out);
         return out;
     }
@@ -289,6 +283,7 @@ public class CUBRIDCfile implements Clob {
         cfileCharBuffer = null;
         cfileByteBuffer = null;
         isWritable = false;
+        isLobLocator = true;
     }
 
     private int readCfilePartially(long pos, int length) throws SQLException {
@@ -296,8 +291,10 @@ public class CUBRIDCfile implements Clob {
             cfileBytePos = cfileNextReadBytePos = lobHandle.getLobSize();
             cfileCharPos = cfileCharLength;
             cfileCharBuffer.setLength(0);
-            if (pos == cfileCharLength + 1) return 0;
-            else return -1;
+            if (pos == cfileCharLength + 1)
+                return 0;
+            else
+                return -1;
         }
 
         pos--;
@@ -336,6 +333,23 @@ public class CUBRIDCfile implements Clob {
         return length;
     }
 
+    private int lobRead(long offset, byte[] buf, int start, int len) throws SQLException {
+        int read_len;
+        long remaining_size;
+
+        remaining_size = lobHandle.getLobSize() - offset;
+
+        if (remaining_size <= 0) {
+            return 0;
+        }
+
+        read_len = Math.min((int) remaining_size, len);
+
+        System.arraycopy(lobHandle.getPackedLobHandle(), (int) offset, buf, start, read_len);
+
+        return read_len;
+    }
+
     private void readCfile() throws SQLException {
         int read_len;
 
@@ -343,23 +357,20 @@ public class CUBRIDCfile implements Clob {
             throw new NullPointerException();
         }
 
-        read_len =
-                conn.lobRead(
-                        lobHandle.getPackedLobHandle(),
-                        cfileNextReadBytePos,
-                        cfileByteBuffer,
-                        0,
-                        CFILE_MAX_IO_LENGTH);
+        read_len = conn.lobRead(
+                lobHandle.getPackedLobHandle(),
+                cfileNextReadBytePos,
+                cfileByteBuffer,
+                0,
+                CFILE_MAX_IO_LENGTH);
 
         StringBuffer sb = new StringBuffer(bytes2string(cfileByteBuffer, 0, read_len));
 
         if (cfileNextReadBytePos + read_len >= lobHandle.getLobSize()) {
             cfileNextReadBytePos += read_len;
-            cfileCharLength =
-                    cfileCharPos + cfileCharBuffer.length() + sb.length();
+            cfileCharLength = cfileCharPos + cfileCharBuffer.length() + sb.length();
         } else {
-            cfileNextReadBytePos +=
-                    string2bytes(sb.substring(0, sb.length() - 1)).length;
+            cfileNextReadBytePos += string2bytes(sb.substring(0, sb.length() - 1)).length;
             sb.setLength(sb.length() - 1);
         }
 
@@ -405,8 +416,13 @@ public class CUBRIDCfile implements Clob {
         }
     }
 
-    public String toString() {
-        return lobHandle.toString();
+    public String toString() throws RuntimeException {
+        if (isLobLocator == true) {
+            return lobHandle.toString();
+        } else {
+            throw new RuntimeException(
+                    "The lob locator does not exist because the column type has changed.");
+        }
     }
 
     public boolean equals(Object obj) {
@@ -440,9 +456,13 @@ public class CUBRIDCfile implements Clob {
         while (length > 0) {
             read_len = Math.min(length, CFILE_MAX_IO_LENGTH);
 
-            real_read_len =
-                    conn.lobRead(
-                            lobHandle.getPackedLobHandle(), pos, buf, total_read_len, read_len);
+            if (isLobLocator == true) {
+                real_read_len =
+                        conn.lobRead(
+                                lobHandle.getPackedLobHandle(), pos, buf, total_read_len, read_len);
+            } else {
+                real_read_len = lobRead(pos, buf, total_read_len, read_len);
+            }
 
             pos += real_read_len;
             length -= real_read_len;
@@ -480,9 +500,8 @@ public class CUBRIDCfile implements Clob {
 
             while (len > 0) {
                 write_len = Math.min(len, CFILE_MAX_IO_LENGTH);
-                real_write_len =
-                        conn.lobWrite(
-                                lobHandle.getPackedLobHandle(), pos, bytes, offset, write_len);
+                real_write_len = conn.lobWrite(
+                        lobHandle.getPackedLobHandle(), pos, bytes, offset, write_len);
 
                 pos += real_write_len;
                 len -= real_write_len;

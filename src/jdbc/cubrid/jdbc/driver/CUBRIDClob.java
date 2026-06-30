@@ -70,12 +70,12 @@ public class CUBRIDClob implements Clob {
     /* java.sql.Clob */
 
     public long length() throws SQLException {
-        checkFreed();
+        checkData();
         return data.length();
     }
 
     public String getSubString(long pos, int length) throws SQLException {
-        checkFreed();
+        checkData();
         if (pos < 1 || length < 0) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
@@ -97,7 +97,7 @@ public class CUBRIDClob implements Clob {
     }
 
     public Reader getCharacterStream(long pos, long length) throws SQLException {
-        checkFreed();
+        checkData();
         if (pos < 1 || length < 0) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
@@ -129,7 +129,7 @@ public class CUBRIDClob implements Clob {
     }
 
     public int setString(long pos, String str, int offset, int len) throws SQLException {
-        checkFreed();
+        checkData();
         if (pos < 1 || offset < 0 || len < 0) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
@@ -164,7 +164,7 @@ public class CUBRIDClob implements Clob {
     }
 
     public Writer setCharacterStream(long pos) throws SQLException {
-        checkFreed();
+        checkData();
         if (pos < 1) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
@@ -183,7 +183,7 @@ public class CUBRIDClob implements Clob {
     }
 
     public void truncate(long len) throws SQLException {
-        checkFreed();
+        checkData();
         if (len < 0 || len > data.length()) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
@@ -199,7 +199,7 @@ public class CUBRIDClob implements Clob {
      * serialization.
      */
     public byte[] getDataAsBytes() throws SQLException {
-        checkFreed();
+        checkData();
         try {
             return data.toString().getBytes(charsetName);
         } catch (UnsupportedEncodingException e) {
@@ -220,7 +220,7 @@ public class CUBRIDClob implements Clob {
         return false;
     }
 
-    private void checkFreed() throws SQLException {
+    private void checkData() throws SQLException {
         if (data == null) {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
