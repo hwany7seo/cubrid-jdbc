@@ -29,93 +29,45 @@
  *
  */
 
-/**
- * Title: CUBRID Java Client Interface
- *
- * <p>Description: CUBRID Java Client Interface
- *
- * <p>
- *
- * @version 2.0
- */
-package cubrid.jdbc.jci;
+package cubrid.jdbc.driver;
 
-/**
- * CAS Protocol Function code
- *
- * <p>since 1.0
- */
-public enum UFunctionCode {
-    /* since 1.0 */
+import java.io.IOException;
+import java.io.OutputStream;
+import java.sql.SQLException;
 
-    END_TRANSACTION(1),
-    PREPARE(2),
-    EXECUTE(3),
-    GET_DB_PARAMETER(4),
-    SET_DB_PARAMETER(5),
-    CLOSE_USTATEMENT(6),
-    CURSOR(7),
-    FETCH(8),
-    GET_SCHEMA_INFO(9),
-    GET_BY_OID(10),
-    PUT_BY_OID(11),
-    GET_DB_VERSION(15),
-    GET_CLASS_NUMBER_OBJECTS(16),
-    RELATED_TO_OID(17),
-    RELATED_TO_COLLECTION(18),
-    /* since 2.0 */
-    NEXT_RESULT(19),
-    EXECUTE_BATCH_STATEMENT(20),
-    EXECUTE_BATCH_PREPAREDSTATEMENT(21),
-    CURSOR_UPDATE(22),
-    GET_QUERY_INFO(24),
+class CUBRIDCfileOutputStream extends OutputStream {
+    private CUBRIDCfile cfile;
+    private long lob_pos;
 
-    /* since 3.0 */
-    SAVEPOINT(26),
-    PARAMETER_INFO(27),
-    XA_PREPARE(28),
-    XA_RECOVER(29),
-    XA_END_TRAN(30),
-
-    CON_CLOSE(31),
-    CHECK_CAS(32),
-
-    MAKE_OUT_RS(33),
-
-    GET_GENERATED_KEYS(34),
-
-    NEW_LOB(35),
-    WRITE_LOB(36),
-    READ_LOB(37),
-	
-    LOBFILE_NEW(35),
-    LOBFILE_WRITE(36),
-    LOBFILE_READ(37),
-
-    END_SESSION(38),
-    PREPARE_AND_EXECUTE(41),
-    CURSOR_CLOSE_FOR_PROTOCOL_V2(41),
-    CURSOR_CLOSE(42),
-    GET_SHARD_INFO(43),
-    SET_CAS_CHANGE_MODE(44),
-    LAST_FUNCTION_CODE(GET_SHARD_INFO);
-
-    private byte code;
-
-    UFunctionCode(byte code) {
-        this.code = code;
+    CUBRIDCfileOutputStream(CUBRIDCfile cfile, long pos) {
+        this.cfile = cfile;
+        lob_pos = pos;
     }
 
-    UFunctionCode(int code) {
-        // FIX ME: possibly overflow
-        this.code = (byte) code;
+    public synchronized void write(int b) throws IOException {
+        byte[] buf = new byte[1];
+        buf[0] = (byte) b;
+        write(buf, 0, 1);
     }
 
-    UFunctionCode(UFunctionCode code) {
-        this.code = code.getCode();
+    public synchronized void write(byte[] b, int off, int len) throws IOException {
+        if (cfile == null) {
+            throw new IOException();
+        }
+
+        if (b == null) throw new NullPointerException();
+        if (off < 0 || len < 0 || off + len > b.length) throw new IndexOutOfBoundsException();
+
+        try {
+            lob_pos += cfile.setBytes(lob_pos, b, off, len);
+        } catch (SQLException e) {
+            throw new IOException(e.getMessage());
+        }
     }
 
-    public byte getCode() {
-        return this.code;
+    public synchronized void close() throws IOException {
+        flush();
+        cfile.removeFlushableStream(this);
+        cfile = null;
     }
 }

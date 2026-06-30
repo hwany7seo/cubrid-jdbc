@@ -40,7 +40,9 @@
  */
 package cubrid.jdbc.jci;
 
+import cubrid.jdbc.driver.CUBRIDBfile;
 import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDOutResultSet;
 import cubrid.sql.CUBRIDOID;
@@ -508,7 +510,11 @@ public class UStatement {
     }
 
     public void bindBlob(int index, Blob blob) {
-        bindValue(index, UUType.U_TYPE_BLOB, blob);
+        if (blob instanceof CUBRIDBfile) {
+            bindValue(index, UUType.U_TYPE_BFILE, blob);
+        } else {
+            bindValue(index, UUType.U_TYPE_BLOB, blob);
+        }
     }
 
     public void bindClob(int index, Clob clob) {
@@ -521,7 +527,11 @@ public class UStatement {
         } catch (SQLException e) {
             relatedConnection.logException(e);
         }
-        bindValue(index, UUType.U_TYPE_CLOB, clob);
+        if (clob instanceof CUBRIDCfile) {
+            bindValue(index, UUType.U_TYPE_CFILE, clob);
+        } else {
+            bindValue(index, UUType.U_TYPE_CLOB, clob);
+        }
     }
 
     public void addBatch() {
@@ -2091,10 +2101,11 @@ public class UStatement {
                 || (columnInfo[index].getColumnType() == UUType.U_TYPE_NULL)) {
             byte collectionByte, setType;
 
+            boolean isLegacyServer = !relatedConnection.isNewLobProtocol();
             collectionByte = inBuffer.readByte();
             if ((byte) (collectionByte & MASK_TYPE_HAS_2_BYTES) == 0) {
                 /* legacy protocol : we expect only simple type here */
-                typeInfo[0] = collectionByte;
+                typeInfo[0] = UUType.normalizeFromWire(collectionByte, isLegacyServer);
                 typeInfo[2] = 1;
             } else {
                 byte typeInfoColumn[];
@@ -2103,6 +2114,7 @@ public class UStatement {
                 charset = (byte) (collectionByte & MASK_CHARSET_FROM_TYPE);
                 collectionByte = (byte) (collectionByte & MASK_COLLECTION_FROM_TYPE);
                 setType = inBuffer.readByte();
+                setType = UUType.normalizeFromWire(setType, isLegacyServer);
                 typeInfoColumn = UColumnInfo.confirmType(setType, collectionByte);
                 typeInfo[0] = typeInfoColumn[0];
                 typeInfo[1] = typeInfoColumn[1];
@@ -2301,9 +2313,19 @@ public class UStatement {
                 } else {
                     return new CUBRIDOutResultSet(relatedConnection, inBuffer.readLong());
                 }
+            case UUType.U_TYPE_BFILE:
+                return inBuffer.readBfile(dataSize, relatedConnection.cubridcon);
+            case UUType.U_TYPE_CFILE:
+                return inBuffer.readCfile(dataSize, relatedConnection.cubridcon);
             case UUType.U_TYPE_BLOB:
+                if (relatedConnection.isNewLobProtocol()) {
+                    return inBuffer.readInternalBlob(dataSize, relatedConnection.cubridcon);
+                }
                 return inBuffer.readBlob(dataSize, relatedConnection.cubridcon);
             case UUType.U_TYPE_CLOB:
+                if (relatedConnection.isNewLobProtocol()) {
+                    return inBuffer.readInternalClob(dataSize, relatedConnection.cubridcon);
+                }
                 return inBuffer.readClob(dataSize, relatedConnection.cubridcon);
             case UUType.U_TYPE_NULL:
                 return null;
@@ -2369,11 +2391,13 @@ public class UStatement {
         columnInfo = new UColumnInfo[columnNumber];
         colNameToIndex = new HashMap<String, Integer>(columnNumber);
 
+        boolean isLegacyServer = !relatedConnection.isNewLobProtocol();
         for (int i = 0; i < columnNumber; i++) {
             collectionByte = inBuffer.readByte();
             if ((byte) (collectionByte & MASK_TYPE_HAS_2_BYTES) == 0) {
                 /* legacy server : type has only one byte */
                 type = (byte) (collectionByte & MASK_TYPE_FROM_SINGLE_BYTE);
+                type = UUType.normalizeFromWire(type, isLegacyServer);
                 collectionByte = (byte) (collectionByte & MASK_COLLECTION_FROM_TYPE);
                 charsetName = relatedConnection.getCharset();
             } else {
@@ -2381,6 +2405,7 @@ public class UStatement {
                 charsetName = UJCIUtil.getJavaCharsetName((byte) charset);
                 collectionByte = (byte) (collectionByte & MASK_COLLECTION_FROM_TYPE);
                 type = inBuffer.readByte();
+                type = UUType.normalizeFromWire(type, isLegacyServer);
             }
 
             scale = inBuffer.readShort();

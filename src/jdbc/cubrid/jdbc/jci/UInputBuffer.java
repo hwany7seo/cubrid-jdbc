@@ -40,8 +40,10 @@
  */
 package cubrid.jdbc.jci;
 
+import cubrid.jdbc.driver.CUBRIDBfile;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDXid;
@@ -501,6 +503,42 @@ class UInputBuffer {
         try {
             byte[] packedLobHandle = readBytes(packedLobHandleSize);
             return new CUBRIDClob(conn, packedLobHandle, conn.getUConnection().getCharset(), true);
+        } catch (Exception e) {
+            throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
+        }
+    }
+
+    CUBRIDBfile readBfile(int packedLobHandleSize, CUBRIDConnection conn) throws UJciException {
+        try {
+            byte[] packedLobHandle = readBytes(packedLobHandleSize);
+            return new CUBRIDBfile(conn, packedLobHandle);
+        } catch (Exception e) {
+            throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
+        }
+    }
+
+    CUBRIDCfile readCfile(int packedLobHandleSize, CUBRIDConnection conn) throws UJciException {
+        try {
+            byte[] packedLobHandle = readBytes(packedLobHandleSize);
+            return new CUBRIDCfile(conn, packedLobHandle, conn.getUConnection().getCharset());
+        } catch (Exception e) {
+            throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
+        }
+    }
+
+    CUBRIDBlob readInternalBlob(int dataSize, CUBRIDConnection conn) throws UJciException {
+        try {
+            byte[] rawData = readBytes(dataSize);
+            return new CUBRIDBlob(conn, rawData, false);
+        } catch (Exception e) {
+            throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
+        }
+    }
+
+    CUBRIDClob readInternalClob(int dataSize, CUBRIDConnection conn) throws UJciException {
+        try {
+            byte[] rawData = readBytes(dataSize);
+            return new CUBRIDClob(conn, rawData, conn.getUConnection().getCharset(), false);
         } catch (Exception e) {
             throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
         }

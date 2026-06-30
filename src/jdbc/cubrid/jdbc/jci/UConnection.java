@@ -101,9 +101,10 @@ public abstract class UConnection {
 
     public static final int PROTOCOL_V11 = 11;
     public static final int PROTOCOL_V12 = 12;
+    public static final int PROTOCOL_V13 = 13;
 
     /* Current protocol version */
-    protected static final byte CAS_PROTOCOL_VERSION = PROTOCOL_V12;
+    protected static final byte CAS_PROTOCOL_VERSION = PROTOCOL_V13;
     protected static final byte CAS_PROTO_INDICATOR = 0x40;
     protected static final byte CAS_PROTO_VER_MASK = 0x3F;
     protected static final byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;
@@ -1914,6 +1915,10 @@ public abstract class UConnection {
             return true;
         }
         return false;
+    }
+
+    public boolean isNewLobProtocol() {
+        return protoVersionIsAbove(PROTOCOL_V12);
     }
 
     public static boolean protoVersionIsLower(int ver) {

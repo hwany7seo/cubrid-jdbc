@@ -62,6 +62,7 @@ public class CUBRIDClob implements Clob {
     private boolean isWritable;
     private boolean isLobLocator;
     private CUBRIDLobHandle lobHandle;
+    private byte[] inlineData;
     private String charsetName;
 
     private StringBuffer clobCharBuffer = new StringBuffer("");
@@ -86,13 +87,20 @@ public class CUBRIDClob implements Clob {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
 
-        byte[] packedLobHandle = conn.lobNew(UUType.U_TYPE_CLOB);
-
         this.conn = conn;
         isWritable = true;
-        isLobLocator = true;
-        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_CLOB, packedLobHandle, isLobLocator);
         this.charsetName = charsetName;
+
+        if (conn.isNewLobProtocol()) {
+            isLobLocator = false;
+            inlineData = new byte[0];
+            lobHandle = null;
+        } else {
+            byte[] packedLobHandle = conn.lobNew(UUType.U_TYPE_CLOB);
+            isLobLocator = true;
+            inlineData = null;
+            lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_CLOB, packedLobHandle, isLobLocator);
+        }
 
         clobCharPos = 0;
         clobCharLength = 0;
@@ -111,8 +119,15 @@ public class CUBRIDClob implements Clob {
         this.conn = conn;
         isWritable = false;
         this.isLobLocator = isLobLocator;
-        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_CLOB, packedLobHandle, isLobLocator);
         this.charsetName = charsetName;
+
+        if (isLobLocator) {
+            inlineData = null;
+            lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_CLOB, packedLobHandle, true);
+        } else {
+            inlineData = packedLobHandle;
+            lobHandle = null;
+        }
 
         clobCharPos = 0;
         clobCharLength = -1;
@@ -126,7 +141,10 @@ public class CUBRIDClob implements Clob {
      * =======================================================================
      */
     public synchronized long length() throws SQLException {
-        if (lobHandle == null) {
+        if (!isLobLocator && inlineData == null) {
+            throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
+        }
+        if (isLobLocator && lobHandle == null) {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
         }
         if (clobCharLength < 0) {
@@ -139,8 +157,12 @@ public class CUBRIDClob implements Clob {
         return clobCharLength;
     }
 
+    private long getByteSize() {
+        return isLobLocator ? lobHandle.getLobSize() : inlineData.length;
+    }
+
     public synchronized String getSubString(long pos, int length) throws SQLException {
-        if (lobHandle == null) {
+        if (isLobLocator ? lobHandle == null : inlineData == null) {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
         }
         if (pos < 1 || length < 0) {
@@ -164,7 +186,7 @@ public class CUBRIDClob implements Clob {
 
     /* JDK 1.6 */
     public Reader getCharacterStream(long pos, long length) throws SQLException {
-        if (lobHandle == null) {
+        if (isLobLocator ? lobHandle == null : inlineData == null) {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
         }
         if (pos < 1 || length < 0) {
@@ -175,7 +197,7 @@ public class CUBRIDClob implements Clob {
     }
 
     public InputStream getAsciiStream() throws SQLException {
-        if (lobHandle == null) {
+        if (isLobLocator ? lobHandle == null : inlineData == null) {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
         }
 
@@ -191,7 +213,7 @@ public class CUBRIDClob implements Clob {
     }
 
     public synchronized int setString(long pos, String str) throws SQLException {
-        if (lobHandle == null) {
+        if (isLobLocator ? lobHandle == null : inlineData == null) {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
         }
         if (pos < 1) {
@@ -212,6 +234,15 @@ public class CUBRIDClob implements Clob {
         byte[] bytes = string2bytes(str);
         int bytes_len = bytes.length;
         int bytes_offset = 0;
+
+        if (!isLobLocator) {
+            byte[] newData = new byte[(int) clobBytePos + bytes_len];
+            System.arraycopy(inlineData, 0, newData, 0, inlineData.length);
+            System.arraycopy(bytes, 0, newData, (int) clobBytePos, bytes_len);
+            inlineData = newData;
+            clobCharLength = length() + str.length();
+            return str.length();
+        }
 
         while (bytes_len > 0) {
             int bytesWritten =
@@ -253,7 +284,7 @@ public class CUBRIDClob implements Clob {
     }
 
     public synchronized OutputStream setAsciiStream(long pos) throws SQLException {
-        if (lobHandle == null) {
+        if (isLobLocator ? lobHandle == null : inlineData == null) {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
         }
         if (pos < 1) {
@@ -276,7 +307,7 @@ public class CUBRIDClob implements Clob {
     }
 
     public Writer setCharacterStream(long pos) throws SQLException {
-        if (lobHandle == null) {
+        if (isLobLocator ? lobHandle == null : inlineData == null) {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
         }
         if (pos < 1) {
@@ -304,6 +335,7 @@ public class CUBRIDClob implements Clob {
     public void free() throws SQLException {
         conn = null;
         lobHandle = null;
+        inlineData = null;
         streamList = null;
         clobCharBuffer = null;
         clobByteBuffer = null;
@@ -312,8 +344,10 @@ public class CUBRIDClob implements Clob {
     }
 
     private int readClobPartially(long pos, int length) throws SQLException {
+        long byteSize = getByteSize();
+
         if (clobCharLength != -1 && pos > clobCharLength) {
-            clobBytePos = clobNextReadBytePos = lobHandle.getLobSize();
+            clobBytePos = clobNextReadBytePos = byteSize;
             clobCharPos = clobCharLength;
             clobCharBuffer.setLength(0);
             if (pos == clobCharLength + 1) return 0;
@@ -333,7 +367,7 @@ public class CUBRIDClob implements Clob {
             clobBytePos = clobNextReadBytePos;
             clobCharPos += clobCharBuffer.length();
             clobCharBuffer.setLength(0);
-            if (clobNextReadBytePos >= lobHandle.getLobSize()) {
+            if (clobNextReadBytePos >= byteSize) {
                 return 0;
             }
             readClob();
@@ -347,7 +381,7 @@ public class CUBRIDClob implements Clob {
         }
 
         while (length > clobCharBuffer.length()) {
-            if (clobNextReadBytePos >= lobHandle.getLobSize()) {
+            if (clobNextReadBytePos >= byteSize) {
                 return clobCharBuffer.length();
             }
             readClob();
@@ -357,30 +391,22 @@ public class CUBRIDClob implements Clob {
     }
 
     private int lobRead(long offset, byte[] buf, int start, int len) throws SQLException {
-        int read_len;
-        long remaining_size;
-
-        remaining_size = lobHandle.getLobSize() - offset;
-
-        if (remaining_size <= 0) {
-            return 0;
-        }
-
-        read_len = Math.min((int) remaining_size, len);
-
-        System.arraycopy(lobHandle.getPackedLobHandle(), (int) offset, buf, start, read_len);
-
+        long remaining_size = inlineData.length - offset;
+        if (remaining_size <= 0) return 0;
+        int read_len = Math.min((int) remaining_size, len);
+        System.arraycopy(inlineData, (int) offset, buf, start, read_len);
         return read_len;
     }
 
     private void readClob() throws SQLException {
         int read_len;
 
-        if (conn == null || lobHandle == null) {
+        if (conn == null) {
             throw new NullPointerException();
         }
 
-        if (isLobLocator == true) {
+        if (isLobLocator) {
+            if (lobHandle == null) throw new NullPointerException();
             read_len =
                     conn.lobRead(
                             lobHandle.getPackedLobHandle(),
@@ -394,8 +420,7 @@ public class CUBRIDClob implements Clob {
 
         StringBuffer sb = new StringBuffer(bytes2string(clobByteBuffer, 0, read_len));
 
-        if (clobNextReadBytePos + read_len >= lobHandle.getLobSize()) // End of CLOB
-        {
+        if (clobNextReadBytePos + read_len >= getByteSize()) {
             clobNextReadBytePos += read_len;
             clobCharLength = clobCharPos + clobCharBuffer.length() + sb.length();
         } else {
@@ -426,6 +451,14 @@ public class CUBRIDClob implements Clob {
         return lobHandle;
     }
 
+    public boolean isLobLocator() {
+        return isLobLocator;
+    }
+
+    public byte[] getInlineData() {
+        return inlineData;
+    }
+
     private void addFlushableStream(Flushable out) {
         streamList.add(out);
     }
@@ -446,7 +479,7 @@ public class CUBRIDClob implements Clob {
     }
 
     public String toString() throws RuntimeException {
-        if (isLobLocator == true) {
+        if (isLobLocator && lobHandle != null) {
             return lobHandle.toString();
         } else {
             throw new RuntimeException(
@@ -457,13 +490,24 @@ public class CUBRIDClob implements Clob {
     public boolean equals(Object obj) {
         if (obj instanceof CUBRIDClob) {
             CUBRIDClob that = (CUBRIDClob) obj;
-            return lobHandle.equals(that.lobHandle);
+            if (!isLobLocator && !that.isLobLocator) {
+                return java.util.Arrays.equals(inlineData, that.inlineData);
+            }
+            if (lobHandle != null && that.lobHandle != null) {
+                return lobHandle.equals(that.lobHandle);
+            }
         }
         return false;
     }
 
     public byte[] getBytes(long pos, int length) throws SQLException {
-        if (conn == null || lobHandle == null) {
+        if (conn == null) {
+            throw new NullPointerException();
+        }
+        if (!isLobLocator && inlineData == null) {
+            throw new NullPointerException();
+        }
+        if (isLobLocator && lobHandle == null) {
             throw new NullPointerException();
         }
         if (pos < 1 || length < 0) {
@@ -475,9 +519,10 @@ public class CUBRIDClob implements Clob {
 
         pos--; // pos is now offset from 0
         int real_read_len, read_len, total_read_len = 0;
+        long byteSize = getByteSize();
 
-        if (pos + length > lobHandle.getLobSize()) {
-            length = (int) (lobHandle.getLobSize() - pos);
+        if (pos + length > byteSize) {
+            length = (int) (byteSize - pos);
         }
 
         byte[] buf = new byte[length];
@@ -485,7 +530,7 @@ public class CUBRIDClob implements Clob {
         while (length > 0) {
             read_len = Math.min(length, CLOB_MAX_IO_LENGTH);
 
-            if (isLobLocator == true) {
+            if (isLobLocator) {
                 real_read_len =
                         conn.lobRead(
                                 lobHandle.getPackedLobHandle(), pos, buf, total_read_len, read_len);
@@ -503,18 +548,20 @@ public class CUBRIDClob implements Clob {
         }
 
         if (total_read_len < buf.length) {
-            // In common case, this code cannot be executed
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.unknown, null);
-            // byte[]new_buf = new byte[total_read_len];
-            // System.arraycopy (buf, 0, new_buf, 0, total_read_len);
-            // return new_buf;
         } else {
             return buf;
         }
     }
 
     public int setBytes(long pos, byte[] bytes, int offset, int len) throws SQLException {
-        if (conn == null || lobHandle == null) {
+        if (conn == null) {
+            throw new NullPointerException();
+        }
+        if (!isLobLocator && inlineData == null) {
+            throw new NullPointerException();
+        }
+        if (isLobLocator && lobHandle == null) {
             throw new NullPointerException();
         }
         if (pos < 1 || offset < 0 || len < 0) {
@@ -525,8 +572,17 @@ public class CUBRIDClob implements Clob {
         }
 
         if (isWritable) {
-            if (lobHandle.getLobSize() + 1 != pos) {
+            if (getByteSize() + 1 != pos) {
                 throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
+            }
+
+            if (!isLobLocator) {
+                byte[] newData = new byte[(int)(pos - 1) + len];
+                System.arraycopy(inlineData, 0, newData, 0, inlineData.length);
+                System.arraycopy(bytes, offset, newData, (int)(pos - 1), len);
+                inlineData = newData;
+                clobCharLength = -1;
+                return len;
             }
 
             pos--; // pos is now offset from 0

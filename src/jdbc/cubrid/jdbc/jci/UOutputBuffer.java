@@ -40,8 +40,10 @@
  */
 package cubrid.jdbc.jci;
 
+import cubrid.jdbc.driver.CUBRIDBfile;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDLobHandle;
 import cubrid.jdbc.util.ByteArrayBuffer;
@@ -303,11 +305,42 @@ class UOutputBuffer {
         return 12;
     }
 
+    int addTypeByte(byte canonicalType) throws IOException {
+        byte wireType = UUType.toWireType(canonicalType, !u_con.isNewLobProtocol());
+        dataBuffer.writeInt(1);
+        dataBuffer.writeByte(wireType);
+        return 5;
+    }
+
     int addBlob(CUBRIDBlob value) throws IOException {
+        if (!value.isLobLocator()) {
+            // V13 internal BLOB: send raw inline bytes (no LOB handle)
+            byte[] data = value.getInlineData();
+            if (data == null) data = new byte[0];
+            dataBuffer.writeInt(data.length);
+            dataBuffer.write(data, 0, data.length);
+            return data.length + 4;
+        }
         return addLob(value.getLobHandle());
     }
 
     int addClob(CUBRIDClob value) throws IOException {
+        if (!value.isLobLocator()) {
+            // V13 internal CLOB: send raw inline bytes (no LOB handle)
+            byte[] data = value.getInlineData();
+            if (data == null) data = new byte[0];
+            dataBuffer.writeInt(data.length);
+            dataBuffer.write(data, 0, data.length);
+            return data.length + 4;
+        }
+        return addLob(value.getLobHandle());
+    }
+
+    int addBfile(CUBRIDBfile value) throws IOException {
+        return addLob(value.getLobHandle());
+    }
+
+    int addCfile(CUBRIDCfile value) throws IOException {
         return addLob(value.getLobHandle());
     }
 
@@ -460,6 +493,24 @@ class UOutputBuffer {
                         throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
                     }
                     return addOID((CUBRIDOID) value);
+                }
+            case UUType.U_TYPE_BFILE:
+                if (value == null) {
+                    return addNull();
+                } else {
+                    if (!(value instanceof CUBRIDBfile)) {
+                        throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
+                    }
+                    return addBfile((CUBRIDBfile) value);
+                }
+            case UUType.U_TYPE_CFILE:
+                if (value == null) {
+                    return addNull();
+                } else {
+                    if (!(value instanceof CUBRIDCfile)) {
+                        throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
+                    }
+                    return addCfile((CUBRIDCfile) value);
                 }
             case UUType.U_TYPE_BLOB:
                 if (value == null) {

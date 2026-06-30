@@ -40,8 +40,10 @@
  */
 package cubrid.jdbc.jci;
 
+import cubrid.jdbc.driver.CUBRIDBfile;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
@@ -84,22 +86,44 @@ public abstract class UUType {
     public static final byte U_TYPE_RESULTSET = 20;
     public static final byte U_TYPE_BIGINT = 21;
     public static final byte U_TYPE_DATETIME = 22;
-    public static final byte U_TYPE_BLOB = 23;
-    public static final byte U_TYPE_CLOB = 24;
-    public static final byte U_TYPE_ENUM = 25;
-    public static final byte U_TYPE_USHORT = 26;
-    public static final byte U_TYPE_UINT = 27;
-    public static final byte U_TYPE_UBIGINT = 28;
-    public static final byte U_TYPE_TIMESTAMPTZ = 29;
-    public static final byte U_TYPE_TIMESTAMPLTZ = 30;
-    public static final byte U_TYPE_DATETIMETZ = 31;
-    public static final byte U_TYPE_DATETIMELTZ = 32;
-    public static final byte U_TYPE_TIMETZ = 33; /* unused */
-    public static final byte U_TYPE_JSON = 34;
+    public static final byte U_TYPE_BFILE = 23;
+    public static final byte U_TYPE_CFILE = 24;
+    public static final byte U_TYPE_BLOB = 25;
+    public static final byte U_TYPE_CLOB = 26;
+    public static final byte U_TYPE_ENUM = 27;
+    public static final byte U_TYPE_USHORT = 28;
+    public static final byte U_TYPE_UINT = 29;
+    public static final byte U_TYPE_UBIGINT = 30;
+    public static final byte U_TYPE_TIMESTAMPTZ = 31;
+    public static final byte U_TYPE_TIMESTAMPLTZ = 32;
+    public static final byte U_TYPE_DATETIMETZ = 33;
+    public static final byte U_TYPE_DATETIMELTZ = 34;
+    public static final byte U_TYPE_TIMETZ = 35; /* unused */
+    public static final byte U_TYPE_JSON = 36;
 
     /* append new type here and also modify U_TYPE_MAX */
 
-    public static final int U_TYPE_MAX = 34;
+    public static final int U_TYPE_MAX = 36;
+
+    static final byte U_TYPE_BLOB_LEGACY = 23;
+    static final byte U_TYPE_CLOB_LEGACY = 24;
+
+    public static byte normalizeFromWire(byte wireType, boolean isLegacyServer) {
+        if (!isLegacyServer || (wireType & 0xFF) < (U_TYPE_BFILE & 0xFF)) {
+            return wireType;
+        }
+        return (byte) (wireType + 2);
+    }
+
+    public static byte toWireType(byte canonicalType, boolean isLegacyServer) {
+        if (!isLegacyServer || (canonicalType & 0xFF) < (U_TYPE_BFILE & 0xFF)) {
+            return canonicalType;
+        }
+        if (canonicalType == U_TYPE_BFILE || canonicalType == U_TYPE_CFILE) {
+            throw new IllegalArgumentException("BFILE/CFILE not supported on V12 servers");
+        }
+        return (byte) (canonicalType - 2);
+    }
 
     static boolean isCollectionType(byte type) {
         if (type == UUType.U_TYPE_SET
@@ -133,6 +157,8 @@ public abstract class UUType {
         } else if (values instanceof CUBRIDOID[]) return UUType.U_TYPE_OBJECT;
         else if (values instanceof CUBRIDBlob[]) return UUType.U_TYPE_BLOB;
         else if (values instanceof CUBRIDClob[]) return UUType.U_TYPE_CLOB;
+        else if (values instanceof CUBRIDBfile[]) return UUType.U_TYPE_BFILE;
+        else if (values instanceof CUBRIDCfile[]) return UUType.U_TYPE_CFILE;
         else return UUType.U_TYPE_NULL;
     }
 
@@ -163,6 +189,8 @@ public abstract class UUType {
         } else if (value instanceof CUBRIDOID) return UUType.U_TYPE_OBJECT;
         else if (value instanceof CUBRIDBlob) return UUType.U_TYPE_BLOB;
         else if (value instanceof CUBRIDClob) return UUType.U_TYPE_CLOB;
+        else if (value instanceof CUBRIDBfile) return UUType.U_TYPE_BFILE;
+        else if (value instanceof CUBRIDCfile) return UUType.U_TYPE_CFILE;
         else if (value instanceof Object[]) return UUType.U_TYPE_SEQUENCE;
         else if (value instanceof CUBRIDBinaryString) return UUType.U_TYPE_VARCHAR;
         else return UUType.U_TYPE_NULL;

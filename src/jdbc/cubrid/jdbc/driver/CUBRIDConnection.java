@@ -859,6 +859,10 @@ public class CUBRIDConnection implements Connection {
         return pstmt;
     }
 
+    public boolean isNewLobProtocol() {
+        return u_con.isNewLobProtocol();
+    }
+
     public synchronized byte[] lobNew(int lobType) throws SQLException {
         checkIsOpen();
         byte[] packedLobHandle = null;
