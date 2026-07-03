@@ -1,7 +1,7 @@
 package cubrid.test;
 
-import cubrid.jdbc.driver.CUBRIDBlob;
-import cubrid.jdbc.driver.CUBRIDClob;
+import cubrid.jdbc.driver.CUBRIDInternalBlob;
+import cubrid.jdbc.driver.CUBRIDInternalClob;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -10,7 +10,7 @@ import java.sql.*;
 import java.util.Arrays;
 
 /**
- * CBRD-26197: CUBRIDBlob / CUBRIDClob 의 in-memory 동작 (서버 없이 로컬 객체 단위) 검증.
+ * CBRD-26197: CUBRIDInternalBlob / CUBRIDInternalClob 의 in-memory 동작 (서버 없이 로컬 객체 단위) 검증.
  *
  * <p>Connection 없이 직접 객체를 생성하여 기본 API 계약을 확인한다.
  * UUType 상수 값이 올바르게 매핑되었는지도 함께 검증한다.
@@ -22,21 +22,21 @@ public class BlobClobInMemoryTest {
 
     public static void main(String[] args) throws Exception {
         testUUTypeConstants();
-        testCUBRIDBlobCreation();
-        testCUBRIDBlobSetAndGet();
-        testCUBRIDBlobStream();
-        testCUBRIDBlobTruncate();
-        testCUBRIDBlobFree();
-        testCUBRIDBlobPartialGet();
-        testCUBRIDClobCreation();
-        testCUBRIDClobSetAndGet();
-        testCUBRIDClobSubString();
-        testCUBRIDClobReader();
-        testCUBRIDClobTruncate();
-        testCUBRIDClobFree();
-        testCUBRIDClobAppend();
-        testCUBRIDBlobEquality();
-        testCUBRIDClobEquality();
+        testCUBRIDInternalBlobCreation();
+        testCUBRIDInternalBlobSetAndGet();
+        testCUBRIDInternalBlobStream();
+        testCUBRIDInternalBlobTruncate();
+        testCUBRIDInternalBlobFree();
+        testCUBRIDInternalBlobPartialGet();
+        testCUBRIDInternalClobCreation();
+        testCUBRIDInternalClobSetAndGet();
+        testCUBRIDInternalClobSubString();
+        testCUBRIDInternalClobReader();
+        testCUBRIDInternalClobTruncate();
+        testCUBRIDInternalClobFree();
+        testCUBRIDInternalClobAppend();
+        testCUBRIDInternalBlobEquality();
+        testCUBRIDInternalClobEquality();
 
         System.out.printf("%nResult: %d passed, %d failed%n", pass, fail);
         if (fail > 0) System.exit(1);
@@ -63,27 +63,27 @@ public class BlobClobInMemoryTest {
         assertEquals(label + " U_TYPE_MAX=36", 36, cubrid.jdbc.jci.UUType.U_TYPE_MAX);
     }
 
-    private static void testCUBRIDBlobCreation() throws Exception {
-        String label = "CUBRIDBlob creation";
+    private static void testCUBRIDInternalBlobCreation() throws Exception {
+        String label = "CUBRIDInternalBlob creation";
 
-        CUBRIDBlob empty = new CUBRIDBlob();
+        CUBRIDInternalBlob empty = new CUBRIDInternalBlob();
         assertEquals(label + " empty length", 0, (int) empty.length());
         assertNotNull(label + " getData", empty.getData());
         assertEquals(label + " getData length", 0, empty.getData().length);
 
         byte[] data = {1, 2, 3};
-        CUBRIDBlob fromData = new CUBRIDBlob(data);
+        CUBRIDInternalBlob fromData = new CUBRIDInternalBlob(data);
         assertEquals(label + " from data length", 3, (int) fromData.length());
         assertArrayEq(label + " getData matches", data, fromData.getData());
 
-        CUBRIDBlob fromNull = new CUBRIDBlob(null);
+        CUBRIDInternalBlob fromNull = new CUBRIDInternalBlob(null);
         assertEquals(label + " from null length", 0, (int) fromNull.length());
     }
 
-    private static void testCUBRIDBlobSetAndGet() throws Exception {
-        String label = "CUBRIDBlob setBytes/getBytes";
+    private static void testCUBRIDInternalBlobSetAndGet() throws Exception {
+        String label = "CUBRIDInternalBlob setBytes/getBytes";
 
-        CUBRIDBlob blob = new CUBRIDBlob();
+        CUBRIDInternalBlob blob = new CUBRIDInternalBlob();
         byte[] data = "Hello World".getBytes("UTF-8");
 
         int written = blob.setBytes(1, data);
@@ -105,15 +105,15 @@ public class BlobClobInMemoryTest {
         blob.setBytes(1, "Bye!!".getBytes("UTF-8"));
         byte[] overwritten = blob.getBytes(1, 5);
         assertArrayEq(label + " overwrite", "Bye!!".getBytes("UTF-8"), overwritten);
-        // rest is unchanged
+        // rest is unchanged ("Hello World" positions 6..11 = " World")
         byte[] rest = blob.getBytes(6, 6);
-        assertArrayEq(label + " rest unchanged", "World".getBytes("UTF-8"), rest);
+        assertArrayEq(label + " rest unchanged", " World".getBytes("UTF-8"), rest);
     }
 
-    private static void testCUBRIDBlobStream() throws Exception {
-        String label = "CUBRIDBlob stream";
+    private static void testCUBRIDInternalBlobStream() throws Exception {
+        String label = "CUBRIDInternalBlob stream";
 
-        CUBRIDBlob blob = new CUBRIDBlob();
+        CUBRIDInternalBlob blob = new CUBRIDInternalBlob();
         byte[] data = {10, 20, 30, 40, 50};
         try (OutputStream os = blob.setBinaryStream(1)) {
             os.write(data);
@@ -134,10 +134,10 @@ public class BlobClobInMemoryTest {
         }
     }
 
-    private static void testCUBRIDBlobTruncate() throws Exception {
-        String label = "CUBRIDBlob truncate";
+    private static void testCUBRIDInternalBlobTruncate() throws Exception {
+        String label = "CUBRIDInternalBlob truncate";
 
-        CUBRIDBlob blob = new CUBRIDBlob(new byte[]{1, 2, 3, 4, 5});
+        CUBRIDInternalBlob blob = new CUBRIDInternalBlob(new byte[]{1, 2, 3, 4, 5});
         blob.truncate(3);
         assertEquals(label + " length after truncate", 3, (int) blob.length());
         assertArrayEq(label + " data after truncate", new byte[]{1, 2, 3}, blob.getData());
@@ -147,10 +147,10 @@ public class BlobClobInMemoryTest {
         assertEquals(label + " length after truncate 0", 0, (int) blob.length());
     }
 
-    private static void testCUBRIDBlobFree() throws Exception {
-        String label = "CUBRIDBlob free";
+    private static void testCUBRIDInternalBlobFree() throws Exception {
+        String label = "CUBRIDInternalBlob free";
 
-        CUBRIDBlob blob = new CUBRIDBlob(new byte[]{9, 8, 7});
+        CUBRIDInternalBlob blob = new CUBRIDInternalBlob(new byte[]{9, 8, 7});
         blob.free();
 
         try {
@@ -161,12 +161,12 @@ public class BlobClobInMemoryTest {
         }
     }
 
-    private static void testCUBRIDBlobPartialGet() throws Exception {
-        String label = "CUBRIDBlob partial boundary";
+    private static void testCUBRIDInternalBlobPartialGet() throws Exception {
+        String label = "CUBRIDInternalBlob partial boundary";
 
         byte[] data = new byte[100];
         for (int i = 0; i < 100; i++) data[i] = (byte) i;
-        CUBRIDBlob blob = new CUBRIDBlob(data);
+        CUBRIDInternalBlob blob = new CUBRIDInternalBlob(data);
 
         // getBytes at boundary
         byte[] last5 = blob.getBytes(96, 10); // clamp to 5
@@ -179,27 +179,27 @@ public class BlobClobInMemoryTest {
     }
 
     // -----------------------------------------------------------------------
-    // CUBRIDClob tests
+    // CUBRIDInternalClob tests
 
-    private static void testCUBRIDClobCreation() throws Exception {
-        String label = "CUBRIDClob creation";
+    private static void testCUBRIDInternalClobCreation() throws Exception {
+        String label = "CUBRIDInternalClob creation";
 
-        CUBRIDClob empty = new CUBRIDClob("UTF-8");
+        CUBRIDInternalClob empty = new CUBRIDInternalClob("UTF-8");
         assertEquals(label + " empty length", 0, (int) empty.length());
         assertEquals(label + " getData empty", "", empty.getData());
 
-        CUBRIDClob fromStr = new CUBRIDClob("Hello CLOB", "UTF-8");
+        CUBRIDInternalClob fromStr = new CUBRIDInternalClob("Hello CLOB", "UTF-8");
         assertEquals(label + " from str length", 10, (int) fromStr.length());
         assertEquals(label + " getData matches", "Hello CLOB", fromStr.getData());
 
-        CUBRIDClob fromNull = new CUBRIDClob(null, "UTF-8");
+        CUBRIDInternalClob fromNull = new CUBRIDInternalClob(null, "UTF-8");
         assertEquals(label + " from null length", 0, (int) fromNull.length());
     }
 
-    private static void testCUBRIDClobSetAndGet() throws Exception {
-        String label = "CUBRIDClob setString/getSubString";
+    private static void testCUBRIDInternalClobSetAndGet() throws Exception {
+        String label = "CUBRIDInternalClob setString/getSubString";
 
-        CUBRIDClob clob = new CUBRIDClob("UTF-8");
+        CUBRIDInternalClob clob = new CUBRIDInternalClob("UTF-8");
         String text = "Hello World 한글";
 
         int written = clob.setString(1, text);
@@ -218,10 +218,10 @@ public class BlobClobInMemoryTest {
         assertTrue(label + " clamped not null", clamped != null);
     }
 
-    private static void testCUBRIDClobSubString(String... ignored) throws Exception {
-        String label = "CUBRIDClob getSubString boundary";
+    private static void testCUBRIDInternalClobSubString(String... ignored) throws Exception {
+        String label = "CUBRIDInternalClob getSubString boundary";
 
-        CUBRIDClob clob = new CUBRIDClob("ABCDE", "UTF-8");
+        CUBRIDInternalClob clob = new CUBRIDInternalClob("ABCDE", "UTF-8");
 
         assertEquals(label + " sub from 1", "ABCDE", clob.getSubString(1, 5));
         assertEquals(label + " sub from 3", "CDE",   clob.getSubString(3, 3));
@@ -229,14 +229,14 @@ public class BlobClobInMemoryTest {
         assertEquals(label + " sub past end", "",     clob.getSubString(6, 5));
     }
 
-    private static void testCUBRIDClobSubString() throws Exception {
-        testCUBRIDClobSubString(new String[0]);
+    private static void testCUBRIDInternalClobSubString() throws Exception {
+        testCUBRIDInternalClobSubString(new String[0]);
     }
 
-    private static void testCUBRIDClobReader() throws Exception {
-        String label = "CUBRIDClob Reader";
+    private static void testCUBRIDInternalClobReader() throws Exception {
+        String label = "CUBRIDInternalClob Reader";
 
-        CUBRIDClob clob = new CUBRIDClob("ReaderTest", "UTF-8");
+        CUBRIDInternalClob clob = new CUBRIDInternalClob("ReaderTest", "UTF-8");
 
         try (Reader r = clob.getCharacterStream()) {
             char[] cbuf = new char[20];
@@ -252,10 +252,10 @@ public class BlobClobInMemoryTest {
         }
     }
 
-    private static void testCUBRIDClobTruncate() throws Exception {
-        String label = "CUBRIDClob truncate";
+    private static void testCUBRIDInternalClobTruncate() throws Exception {
+        String label = "CUBRIDInternalClob truncate";
 
-        CUBRIDClob clob = new CUBRIDClob("Hello World", "UTF-8");
+        CUBRIDInternalClob clob = new CUBRIDInternalClob("Hello World", "UTF-8");
         clob.truncate(5);
         assertEquals(label + " length", 5, (int) clob.length());
         assertEquals(label + " content", "Hello", clob.getSubString(1, 5));
@@ -264,10 +264,10 @@ public class BlobClobInMemoryTest {
         assertEquals(label + " truncate 0", 0, (int) clob.length());
     }
 
-    private static void testCUBRIDClobFree() throws Exception {
-        String label = "CUBRIDClob free";
+    private static void testCUBRIDInternalClobFree() throws Exception {
+        String label = "CUBRIDInternalClob free";
 
-        CUBRIDClob clob = new CUBRIDClob("test", "UTF-8");
+        CUBRIDInternalClob clob = new CUBRIDInternalClob("test", "UTF-8");
         clob.free();
 
         try {
@@ -278,34 +278,34 @@ public class BlobClobInMemoryTest {
         }
     }
 
-    private static void testCUBRIDClobAppend() throws Exception {
-        String label = "CUBRIDClob append";
+    private static void testCUBRIDInternalClobAppend() throws Exception {
+        String label = "CUBRIDInternalClob append";
 
-        CUBRIDClob clob = new CUBRIDClob("Hello", "UTF-8");
+        CUBRIDInternalClob clob = new CUBRIDInternalClob("Hello", "UTF-8");
         clob.setString(6, " World");
         assertEquals(label + " appended length", 11, (int) clob.length());
         assertEquals(label + " appended content", "Hello World", clob.getData());
     }
 
-    private static void testCUBRIDBlobEquality() throws Exception {
-        String label = "CUBRIDBlob equals";
+    private static void testCUBRIDInternalBlobEquality() throws Exception {
+        String label = "CUBRIDInternalBlob equals";
 
         byte[] data = {1, 2, 3};
-        CUBRIDBlob b1 = new CUBRIDBlob(data);
-        CUBRIDBlob b2 = new CUBRIDBlob(data.clone());
-        CUBRIDBlob b3 = new CUBRIDBlob(new byte[]{1, 2, 4});
+        CUBRIDInternalBlob b1 = new CUBRIDInternalBlob(data);
+        CUBRIDInternalBlob b2 = new CUBRIDInternalBlob(data.clone());
+        CUBRIDInternalBlob b3 = new CUBRIDInternalBlob(new byte[]{1, 2, 4});
 
         assertTrue(label + " equal", b1.equals(b2));
         assertTrue(label + " not equal", !b1.equals(b3));
         assertTrue(label + " not equal null", !b1.equals(null));
     }
 
-    private static void testCUBRIDClobEquality() throws Exception {
-        String label = "CUBRIDClob equals";
+    private static void testCUBRIDInternalClobEquality() throws Exception {
+        String label = "CUBRIDInternalClob equals";
 
-        CUBRIDClob c1 = new CUBRIDClob("Hello", "UTF-8");
-        CUBRIDClob c2 = new CUBRIDClob("Hello", "UTF-8");
-        CUBRIDClob c3 = new CUBRIDClob("World", "UTF-8");
+        CUBRIDInternalClob c1 = new CUBRIDInternalClob("Hello", "UTF-8");
+        CUBRIDInternalClob c2 = new CUBRIDInternalClob("Hello", "UTF-8");
+        CUBRIDInternalClob c3 = new CUBRIDInternalClob("World", "UTF-8");
 
         assertTrue(label + " equal", c1.equals(c2));
         assertTrue(label + " not equal", !c1.equals(c3));

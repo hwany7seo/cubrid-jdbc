@@ -57,7 +57,6 @@ public class CUBRIDBlob implements Blob {
     private boolean isWritable;
     private boolean isLobLocator;
     private CUBRIDLobHandle lobHandle;
-    private byte[] inlineData;
 
     private ArrayList<java.io.Flushable> streamList = new ArrayList<java.io.Flushable>();
 
@@ -72,19 +71,12 @@ public class CUBRIDBlob implements Blob {
             throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
         }
 
+        byte[] packedLobHandle = conn.lobNew(UUType.U_TYPE_BLOB);
+
         this.conn = conn;
         isWritable = true;
-
-        if (conn.isNewLobProtocol()) {
-            isLobLocator = false;
-            inlineData = new byte[0];
-            lobHandle = null;
-        } else {
-            byte[] packedLobHandle = conn.lobNew(UUType.U_TYPE_BLOB);
-            isLobLocator = true;
-            inlineData = null;
-            lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BLOB, packedLobHandle, isLobLocator);
-        }
+        isLobLocator = true;
+        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BLOB, packedLobHandle, isLobLocator);
     }
 
     // get blob from existing result set
@@ -97,13 +89,7 @@ public class CUBRIDBlob implements Blob {
         this.conn = conn;
         isWritable = false;
         this.isLobLocator = isLobLocator;
-        if (isLobLocator) {
-            inlineData = null;
-            lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BLOB, packedLobHandle, true);
-        } else {
-            inlineData = packedLobHandle;
-            lobHandle = null;
-        }
+        lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BLOB, packedLobHandle, isLobLocator);
     }
 
     /*
@@ -112,9 +98,6 @@ public class CUBRIDBlob implements Blob {
      * =======================================================================
      */
     public long length() throws SQLException {
-        if (!isLobLocator) {
-            return (inlineData != null) ? inlineData.length : 0;
-        }
         if (lobHandle == null) {
             throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
         }
@@ -161,7 +144,7 @@ public class CUBRIDBlob implements Blob {
                 }
             }
         } else {
-            System.arraycopy(inlineData, (int) pos, buf, 0, length);
+            System.arraycopy(lobHandle.getPackedLobHandle(), (int) pos, buf, 0, length);
             total_read_len = length;
         }
 
@@ -221,16 +204,6 @@ public class CUBRIDBlob implements Blob {
                 throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.lob_pos_invalid, null);
             }
 
-            if (!isLobLocator) {
-                byte[] newData = new byte[(int)(pos - 1) + len];
-                if (inlineData != null && inlineData.length > 0) {
-                    System.arraycopy(inlineData, 0, newData, 0, inlineData.length);
-                }
-                System.arraycopy(bytes, offset, newData, (int)(pos - 1), len);
-                inlineData = newData;
-                return len;
-            }
-
             pos--; // pos is now offset from 0
 
             int real_write_len, write_len, total_write_len = 0;
@@ -288,7 +261,6 @@ public class CUBRIDBlob implements Blob {
     public void free() throws SQLException {
         conn = null;
         lobHandle = null;
-        inlineData = null;
         streamList = null;
         isWritable = false;
         isLobLocator = true;
@@ -296,14 +268,6 @@ public class CUBRIDBlob implements Blob {
 
     public CUBRIDLobHandle getLobHandle() {
         return lobHandle;
-    }
-
-    public boolean isLobLocator() {
-        return isLobLocator;
-    }
-
-    public byte[] getInlineData() {
-        return inlineData;
     }
 
     private void addFlushableStream(Flushable out) {
@@ -326,7 +290,7 @@ public class CUBRIDBlob implements Blob {
     }
 
     public String toString() throws RuntimeException {
-        if (isLobLocator && lobHandle != null) {
+        if (isLobLocator == true) {
             return lobHandle.toString();
         } else {
             throw new RuntimeException(

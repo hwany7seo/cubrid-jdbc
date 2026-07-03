@@ -46,6 +46,8 @@ import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDConnection;
+import cubrid.jdbc.driver.CUBRIDInternalBlob;
+import cubrid.jdbc.driver.CUBRIDInternalClob;
 import cubrid.jdbc.driver.CUBRIDXid;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDOIDImpl;
@@ -526,19 +528,28 @@ class UInputBuffer {
         }
     }
 
-    CUBRIDBlob readInternalBlob(int dataSize, CUBRIDConnection conn) throws UJciException {
+    /** V13: internal BLOB — raw inline bytes (VARBIT-like), self-contained in-memory object. */
+    CUBRIDInternalBlob readInternalBlob(int dataSize, CUBRIDConnection conn) throws UJciException {
         try {
             byte[] rawData = readBytes(dataSize);
-            return new CUBRIDBlob(conn, rawData, false);
+            return new CUBRIDInternalBlob(rawData);
         } catch (Exception e) {
             throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
         }
     }
 
-    CUBRIDClob readInternalClob(int dataSize, CUBRIDConnection conn) throws UJciException {
+    /** V13: internal CLOB — raw inline bytes (VARCHAR-like), self-contained in-memory object. */
+    CUBRIDInternalClob readInternalClob(int dataSize, CUBRIDConnection conn) throws UJciException {
         try {
             byte[] rawData = readBytes(dataSize);
-            return new CUBRIDClob(conn, rawData, conn.getUConnection().getCharset(), false);
+            String charset = conn.getUConnection().getCharset();
+            String value;
+            try {
+                value = (charset == null) ? new String(rawData) : new String(rawData, charset);
+            } catch (java.io.UnsupportedEncodingException uee) {
+                value = new String(rawData);
+            }
+            return new CUBRIDInternalClob(value, charset);
         } catch (Exception e) {
             throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
         }

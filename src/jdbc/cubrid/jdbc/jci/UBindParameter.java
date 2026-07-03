@@ -44,6 +44,8 @@ import cubrid.jdbc.driver.CUBRIDBfile;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
+import cubrid.jdbc.driver.CUBRIDInternalBlob;
+import cubrid.jdbc.driver.CUBRIDInternalClob;
 import java.io.IOException;
 
 public class UBindParameter extends UParameter {
@@ -150,6 +152,10 @@ public class UBindParameter extends UParameter {
                 ((CUBRIDBfile) values[i]).flushFlushableStreams();
             } else if (values[i] instanceof CUBRIDCfile) {
                 ((CUBRIDCfile) values[i]).flushFlushableStreams();
+            } else if (values[i] instanceof CUBRIDInternalBlob) {
+                ((CUBRIDInternalBlob) values[i]).flushFlushableStreams();
+            } else if (values[i] instanceof CUBRIDInternalClob) {
+                ((CUBRIDInternalClob) values[i]).flushFlushableStreams();
             }
         }
     }

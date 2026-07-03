@@ -45,6 +45,8 @@ import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDCfile;
 import cubrid.jdbc.driver.CUBRIDClob;
+import cubrid.jdbc.driver.CUBRIDInternalBlob;
+import cubrid.jdbc.driver.CUBRIDInternalClob;
 import cubrid.jdbc.driver.CUBRIDLobHandle;
 import cubrid.jdbc.util.ByteArrayBuffer;
 import cubrid.sql.CUBRIDOID;
@@ -313,26 +315,10 @@ class UOutputBuffer {
     }
 
     int addBlob(CUBRIDBlob value) throws IOException {
-        if (!value.isLobLocator()) {
-            // V13 internal BLOB: send raw inline bytes (no LOB handle)
-            byte[] data = value.getInlineData();
-            if (data == null) data = new byte[0];
-            dataBuffer.writeInt(data.length);
-            dataBuffer.write(data, 0, data.length);
-            return data.length + 4;
-        }
         return addLob(value.getLobHandle());
     }
 
     int addClob(CUBRIDClob value) throws IOException {
-        if (!value.isLobLocator()) {
-            // V13 internal CLOB: send raw inline bytes (no LOB handle)
-            byte[] data = value.getInlineData();
-            if (data == null) data = new byte[0];
-            dataBuffer.writeInt(data.length);
-            dataBuffer.write(data, 0, data.length);
-            return data.length + 4;
-        }
         return addLob(value.getLobHandle());
     }
 
@@ -342,6 +328,27 @@ class UOutputBuffer {
 
     int addCfile(CUBRIDCfile value) throws IOException {
         return addLob(value.getLobHandle());
+    }
+
+    /** V13 internal BLOB: send raw inline bytes (VARBIT-like), no LOB handle. */
+    int addInternalBlob(CUBRIDInternalBlob value) throws IOException {
+        byte[] data = value.getData();
+        dataBuffer.writeInt(data.length);
+        dataBuffer.write(data, 0, data.length);
+        return data.length + 4;
+    }
+
+    /** V13 internal CLOB: send raw inline bytes (VARCHAR-like), no LOB handle. */
+    int addInternalClob(CUBRIDInternalClob value) throws UJciException, IOException {
+        byte[] data;
+        try {
+            data = value.getEncodedBytes();
+        } catch (java.sql.SQLException e) {
+            throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
+        }
+        dataBuffer.writeInt(data.length);
+        dataBuffer.write(data, 0, data.length);
+        return data.length + 4;
     }
 
     private int addLob(CUBRIDLobHandle lobHandle) throws IOException {
@@ -515,6 +522,9 @@ class UOutputBuffer {
             case UUType.U_TYPE_BLOB:
                 if (value == null) {
                     return addNull();
+                } else if (value instanceof CUBRIDInternalBlob) {
+                    // V13 internal (inline) BLOB
+                    return addInternalBlob((CUBRIDInternalBlob) value);
                 } else {
                     if (!(value instanceof CUBRIDBlob)) {
                         throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);
@@ -524,6 +534,9 @@ class UOutputBuffer {
             case UUType.U_TYPE_CLOB:
                 if (value == null) {
                     return addNull();
+                } else if (value instanceof CUBRIDInternalClob) {
+                    // V13 internal (inline) CLOB
+                    return addInternalClob((CUBRIDInternalClob) value);
                 } else {
                     if (!(value instanceof CUBRIDClob)) {
                         throw u_con.createJciException(UErrorCode.ER_TYPE_CONVERSION);

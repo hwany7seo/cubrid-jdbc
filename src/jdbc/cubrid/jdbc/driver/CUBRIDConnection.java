@@ -785,14 +785,20 @@ public class CUBRIDConnection implements Connection {
 
     /* JDK 1.6 */
     public Blob createBlob() throws SQLException {
-        Blob blob = new CUBRIDBlob(this);
-        return blob;
+        // V13+ : internal (inline) BLOB, no server-side locator required.
+        // pre-V13 : legacy locator-based BLOB.
+        if (isNewLobProtocol()) {
+            return new CUBRIDInternalBlob();
+        }
+        return new CUBRIDBlob(this);
     }
 
     /* JDK 1.6 */
     public Clob createClob() throws SQLException {
-        Clob clob = new CUBRIDClob(this, getUConnection().getCharset());
-        return clob;
+        if (isNewLobProtocol()) {
+            return new CUBRIDInternalClob(getUConnection().getCharset());
+        }
+        return new CUBRIDClob(this, getUConnection().getCharset());
     }
 
     private void end(boolean commit) throws SQLException {
