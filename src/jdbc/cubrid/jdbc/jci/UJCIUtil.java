@@ -41,6 +41,7 @@ public abstract class UJCIUtil {
 
     private static boolean bServerSide;
     private static boolean bConsoleDebug;
+    private static boolean bJdbcDriverLog;
     private static boolean bSendAppInfo;
     private static boolean bJDBC4;
     private static Boolean bMysqlMode = null;
@@ -52,6 +53,13 @@ public abstract class UJCIUtil {
             bConsoleDebug = true;
         } else {
             bConsoleDebug = false;
+        }
+
+        value = System.getProperty("JdbcDriverLog");
+        if (value != null && value.equals("true")) {
+            bJdbcDriverLog = true;
+        } else {
+            bJdbcDriverLog = false;
         }
 
         value = System.getProperty("SendAppInfo");
@@ -145,6 +153,10 @@ public abstract class UJCIUtil {
 
     public static boolean isConsoleDebug() {
         return bConsoleDebug;
+    }
+
+    public static boolean isJdbcDriverLog() {
+        return bJdbcDriverLog;
     }
 
     public static boolean isSendAppInfo() {

@@ -60,6 +60,7 @@ class UOutputBuffer {
     private UConnection u_con;
     private OutputStream output;
     private ByteArrayBuffer dataBuffer;
+    private UFunctionCode lastFuncCode;
 
     UOutputBuffer(UConnection ucon) throws IOException {
         this.u_con = ucon;
@@ -79,13 +80,19 @@ class UOutputBuffer {
     void newRequest(OutputStream out, UFunctionCode func_code) throws IOException {
         output = out;
         initBuffer();
+        lastFuncCode = func_code;
         dataBuffer.writeByte(func_code.getCode());
     }
 
     void newRequest(UFunctionCode func_code) throws IOException {
         output = u_con.getOutputStream();
         initBuffer();
+        lastFuncCode = func_code;
         dataBuffer.writeByte(func_code.getCode());
+    }
+
+    UFunctionCode getLastFuncCode() {
+        return lastFuncCode;
     }
 
     int addInt(int intValue) throws IOException {

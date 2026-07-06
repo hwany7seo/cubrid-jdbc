@@ -1823,9 +1823,20 @@ public abstract class UConnection {
         deferred_close_handle.clear();
     }
 
+    private void logDriverRoundTrip() {
+        if (!UJCIUtil.isJdbcDriverLog()) {
+            return;
+        }
+        UFunctionCode fc = (outBuffer == null) ? null : outBuffer.getLastFuncCode();
+        System.out.println(
+                "[JDBC-Driver] round-trip: "
+                        + (fc == null ? "?" : fc.name() + " (code=" + fc.getCode() + ")"));
+    }
+
     UInputBuffer send_recv_msg(boolean recv_result, int timeout) throws UJciException, IOException {
         byte prev_casinfo[] = casInfo;
         UInputBuffer inputBuffer;
+        logDriverRoundTrip();
         outBuffer.sendData();
         /* set cas info to UConnection member variable and return InputBuffer */
         if (timeout > 0) {
@@ -1849,6 +1860,7 @@ public abstract class UConnection {
 
     UInputBuffer send_recv_msg(boolean recv_result) throws UJciException, IOException {
         byte prev_casinfo[] = casInfo;
+        logDriverRoundTrip();
         outBuffer.sendData();
         /* set cas info to UConnection member variable and return InputBuffer */
         UInputBuffer inputBuffer = new UInputBuffer(input, this, 0);

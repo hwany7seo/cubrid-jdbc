@@ -7,7 +7,7 @@ import cubrid.jdbc.driver.CUBRIDDriver;
 
 public class ConnectWorker {
     
-    private static final String CONNECTION_URL = "jdbc:cubrid:192.168.2.33:33000:demodb:::";
+    private static final String CONNECTION_URL = "jdbc:cubrid:192.168.3.32:33000:demodb:::";
     private static String USER = "dba";
     private static String PASSWORD = "";
     
