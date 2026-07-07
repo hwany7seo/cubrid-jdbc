@@ -101,9 +101,10 @@ public abstract class UConnection {
 
     public static final int PROTOCOL_V11 = 11;
     public static final int PROTOCOL_V12 = 12;
+    public static final int PROTOCOL_V13 = 13;
 
     /* Current protocol version */
-    protected static final byte CAS_PROTOCOL_VERSION = PROTOCOL_V12;
+    protected static final byte CAS_PROTOCOL_VERSION = PROTOCOL_V13;
     protected static final byte CAS_PROTO_INDICATOR = 0x40;
     protected static final byte CAS_PROTO_VER_MASK = 0x3F;
     protected static final byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;
@@ -258,6 +259,13 @@ public abstract class UConnection {
     boolean skip_checkcas = false;
     Vector<UStatement> pooled_ustmts;
     Vector<Integer> deferred_close_handle;
+    /*
+     * Holdable cursors closed locally but not yet released on the server.
+     * Flushed as one batched CAS_FC_CURSOR_CLOSE (PROTOCOL_V13+) instead of one
+     * synchronous round-trip per ResultSet.close().
+     */
+    Vector<Integer> deferred_cursor_close_handle;
+    private static final int DEFERRED_CURSOR_CLOSE_MAX = 32;
 
     private long beginTime;
 
@@ -1821,6 +1829,9 @@ public abstract class UConnection {
         }
         clearPooledUStatements();
         deferred_close_handle.clear();
+        if (deferred_cursor_close_handle != null) {
+            deferred_cursor_close_handle.clear();
+        }
     }
 
     private void logDriverRoundTrip() {
@@ -1928,6 +1939,69 @@ public abstract class UConnection {
         return false;
     }
 
+    /*
+     * Batched holdable-cursor close (PROTOCOL_V13+).
+     *
+     * On a holdable connection every ResultSet.close() would otherwise cost a
+     * synchronous CURSOR_CLOSE round-trip. When the broker understands
+     * PROTOCOL_V13 we mark the cursor closed locally and flush the accumulated
+     * server handles to the broker as a single CAS_FC_CURSOR_CLOSE carrying many
+     * ids. Re-executing a statement frees its previous result on the server
+     * (ux_execute -> hm_qresult_end), so a pending close for a re-executed or
+     * closed handle is dropped rather than sent (handle-id reuse safety).
+     */
+    public boolean supportsBatchedCursorClose() {
+        return protoVersionIsAbove(PROTOCOL_V13);
+    }
+
+    void addDeferredCursorClose(int handle) {
+        if (deferred_cursor_close_handle == null) {
+            return;
+        }
+        Integer h = Integer.valueOf(handle);
+        if (!deferred_cursor_close_handle.contains(h)) {
+            deferred_cursor_close_handle.add(h);
+        }
+        if (deferred_cursor_close_handle.size() >= DEFERRED_CURSOR_CLOSE_MAX) {
+            flushDeferredCursorClose();
+        }
+    }
+
+    void removeDeferredCursorClose(int handle) {
+        if (deferred_cursor_close_handle != null) {
+            deferred_cursor_close_handle.remove(Integer.valueOf(handle));
+        }
+    }
+
+    void clearDeferredCursorClose() {
+        if (deferred_cursor_close_handle != null) {
+            deferred_cursor_close_handle.clear();
+        }
+    }
+
+    void flushDeferredCursorClose() {
+        if (deferred_cursor_close_handle == null || deferred_cursor_close_handle.isEmpty()) {
+            return;
+        }
+        if (isConnectedToCubrid() == false) {
+            deferred_cursor_close_handle.clear();
+            return;
+        }
+        try {
+            outBuffer.newRequest(UFunctionCode.CURSOR_CLOSE);
+            for (int i = 0; i < deferred_cursor_close_handle.size(); i++) {
+                outBuffer.addInt(deferred_cursor_close_handle.get(i).intValue());
+            }
+            send_recv_msg();
+        } catch (UJciException e) {
+            logException(e);
+        } catch (IOException e) {
+            logException(e);
+        } finally {
+            deferred_cursor_close_handle.clear();
+        }
+    }
+
     public static boolean protoVersionIsLower(int ver) {
         if (protocolVersion < ver) {
             return true;
@@ -1964,6 +2038,9 @@ public abstract class UConnection {
 
         if (deferred_close_handle == null) {
             deferred_close_handle = new Vector<Integer>();
+        }
+        if (deferred_cursor_close_handle == null) {
+            deferred_cursor_close_handle = new Vector<Integer>();
         }
     }
 

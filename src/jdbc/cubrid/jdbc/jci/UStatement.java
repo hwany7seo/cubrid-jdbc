@@ -588,6 +588,8 @@ public class UStatement {
             return;
         }
         relatedConnection.pooled_ustmts.remove(this);
+        /* handle is being freed; drop any deferred cursor close for it */
+        relatedConnection.removeDeferredCursorClose(serverHandler);
         currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
         isClosed = true;
         if (stmt_cache != null) {
@@ -665,6 +667,12 @@ public class UStatement {
 
     public synchronized void closeCursor() {
         if (relatedConnection.isConnectedToCubrid() == false) {
+            return;
+        }
+
+        if (relatedConnection.supportsBatchedCursorClose()) {
+            /* PROTOCOL_V13+: defer & batch instead of a per-close round-trip */
+            relatedConnection.addDeferredCursorClose(serverHandler);
             return;
         }
 
@@ -862,6 +870,14 @@ public class UStatement {
         UInputBuffer inBuffer = null;
         errorHandler.clear();
         relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
+
+        /*
+         * Re-executing this handle makes the server free its previous result
+         * (ux_execute -> hm_qresult_end), so any deferred batched cursor close
+         * for this handle is now redundant and must not be sent later (it could
+         * otherwise close a reused handle's fresh result).
+         */
+        relatedConnection.removeDeferredCursorClose(serverHandler);
 
         synchronized (relatedConnection) {
             writeExecuteRequest(maxField, isScrollable, queryTimeout, cacheData);
@@ -1080,6 +1096,9 @@ public class UStatement {
         UInputBuffer inBuffer = null;
         errorHandler.clear();
         relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
+
+        /* re-executing this handle supersedes any deferred cursor close for it */
+        relatedConnection.removeDeferredCursorClose(serverHandler);
 
         synchronized (relatedConnection) {
             writeExecuteBatchRequest(queryTimeout);
