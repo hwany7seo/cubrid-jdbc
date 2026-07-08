@@ -326,14 +326,15 @@ public class UClientSideConnection extends UConnection {
                             throw new Exception("Check It Out!");
                         }
                     }
-                    if (type == true) {
-                        /* commit: release locally-closed holdable cursors first
-                         * (no-op / no round-trip when nothing is pending) */
-                        flushDeferredCursorClose();
-                    } else {
-                        /* rollback: server releases all results; drop pending */
+                    if (type == false) {
+                        /* rollback: server releases all results — drop pending
+                         * holdable cursor closes without sending. */
                         clearDeferredCursorClose();
                     }
+                    /* commit: HOLD_CURSORS_OVER_COMMIT cursors must survive the
+                     * commit, so we must NOT close them here. Deferred closes are
+                     * released by re-execute / statement close / threshold flush /
+                     * connection teardown instead. */
 
                     outBuffer.newRequest(output, UFunctionCode.END_TRANSACTION);
                     outBuffer.addByte((type == true) ? END_TRAN_COMMIT : END_TRAN_ROLLBACK);

@@ -260,11 +260,12 @@ public abstract class UConnection {
     Vector<UStatement> pooled_ustmts;
     Vector<Integer> deferred_close_handle;
     /*
-     * Holdable cursors closed locally but not yet released on the server.
-     * Flushed as one batched CAS_FC_CURSOR_CLOSE (PROTOCOL_V13+) instead of one
-     * synchronous round-trip per ResultSet.close().
+     * Count of live statements currently marked with a pending holdable-cursor
+     * close (UStatement.cursorClosePending). Used only to trigger a batched
+     * flush at DEFERRED_CURSOR_CLOSE_MAX; the per-statement flag is authoritative
+     * (flush iterates pooled_ustmts and closes only the still-pending ones).
      */
-    Vector<Integer> deferred_cursor_close_handle;
+    private int deferredCursorCloseCount = 0;
     private static final int DEFERRED_CURSOR_CLOSE_MAX = 32;
 
     private long beginTime;
@@ -1829,9 +1830,7 @@ public abstract class UConnection {
         }
         clearPooledUStatements();
         deferred_close_handle.clear();
-        if (deferred_cursor_close_handle != null) {
-            deferred_cursor_close_handle.clear();
-        }
+        deferredCursorCloseCount = 0;
     }
 
     private void logDriverRoundTrip() {
@@ -1954,51 +1953,80 @@ public abstract class UConnection {
         return protoVersionIsAbove(PROTOCOL_V13);
     }
 
-    void addDeferredCursorClose(int handle) {
-        if (deferred_cursor_close_handle == null) {
+    void addDeferredCursorClose(UStatement stmt) {
+        if (stmt == null || stmt.cursorClosePending) {
             return;
         }
-        Integer h = Integer.valueOf(handle);
-        if (!deferred_cursor_close_handle.contains(h)) {
-            deferred_cursor_close_handle.add(h);
-        }
-        if (deferred_cursor_close_handle.size() >= DEFERRED_CURSOR_CLOSE_MAX) {
+        stmt.cursorClosePending = true;
+        deferredCursorCloseCount++;
+        if (deferredCursorCloseCount >= DEFERRED_CURSOR_CLOSE_MAX) {
             flushDeferredCursorClose();
         }
     }
 
-    void removeDeferredCursorClose(int handle) {
-        if (deferred_cursor_close_handle != null) {
-            deferred_cursor_close_handle.remove(Integer.valueOf(handle));
+    void removeDeferredCursorClose(UStatement stmt) {
+        if (stmt == null || !stmt.cursorClosePending) {
+            return;
+        }
+        stmt.cursorClosePending = false;
+        if (deferredCursorCloseCount > 0) {
+            deferredCursorCloseCount--;
         }
     }
 
     void clearDeferredCursorClose() {
-        if (deferred_cursor_close_handle != null) {
-            deferred_cursor_close_handle.clear();
+        if (pooled_ustmts != null) {
+            for (int i = 0; i < pooled_ustmts.size(); i++) {
+                UStatement s = pooled_ustmts.get(i);
+                if (s != null) {
+                    s.cursorClosePending = false;
+                }
+            }
         }
+        deferredCursorCloseCount = 0;
     }
 
+    /*
+     * Flush pending holdable-cursor closes as one batched CAS_FC_CURSOR_CLOSE.
+     * Iterates pooled_ustmts and closes only statements still marked pending and
+     * not yet closed, so a re-executed (live) cursor is never closed here. Called
+     * at the DEFERRED_CURSOR_CLOSE_MAX threshold (and, later, at PREPARE) — NOT at
+     * commit: HOLD_CURSORS_OVER_COMMIT cursors must survive commit.
+     */
     void flushDeferredCursorClose() {
-        if (deferred_cursor_close_handle == null || deferred_cursor_close_handle.isEmpty()) {
+        if (deferredCursorCloseCount <= 0 || pooled_ustmts == null) {
+            deferredCursorCloseCount = 0;
             return;
         }
         if (isConnectedToCubrid() == false) {
-            deferred_cursor_close_handle.clear();
+            clearDeferredCursorClose();
             return;
         }
+        UFunctionCode code = UFunctionCode.CURSOR_CLOSE;
+        if (protoVersionIsSame(PROTOCOL_V2)) {
+            code = UFunctionCode.CURSOR_CLOSE_FOR_PROTOCOL_V2;
+        }
         try {
-            outBuffer.newRequest(UFunctionCode.CURSOR_CLOSE);
-            for (int i = 0; i < deferred_cursor_close_handle.size(); i++) {
-                outBuffer.addInt(deferred_cursor_close_handle.get(i).intValue());
+            boolean any = false;
+            for (int i = 0; i < pooled_ustmts.size(); i++) {
+                UStatement s = pooled_ustmts.get(i);
+                if (s != null && s.cursorClosePending && !s.isClosed()) {
+                    if (!any) {
+                        outBuffer.newRequest(code);
+                        any = true;
+                    }
+                    outBuffer.addInt(s.getServerHandle());
+                }
             }
-            send_recv_msg();
+            if (any) {
+                send_recv_msg();
+            }
         } catch (UJciException e) {
             logException(e);
         } catch (IOException e) {
             logException(e);
         } finally {
-            deferred_cursor_close_handle.clear();
+            clearDeferredCursorClose();
         }
     }
 
@@ -2038,9 +2066,6 @@ public abstract class UConnection {
 
         if (deferred_close_handle == null) {
             deferred_close_handle = new Vector<Integer>();
-        }
-        if (deferred_cursor_close_handle == null) {
-            deferred_cursor_close_handle = new Vector<Integer>();
         }
     }
 
