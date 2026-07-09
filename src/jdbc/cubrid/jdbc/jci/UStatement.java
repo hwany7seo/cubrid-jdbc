@@ -88,6 +88,14 @@ public class UStatement {
 
     private UConnection relatedConnection;
     private boolean isClosed;
+    /*
+     * PROTOCOL_V13+ deferred holdable-cursor close. Set on ResultSet.close();
+     * cleared on (re-)execute of this handle and on statement close. This
+     * per-statement flag is authoritative; UConnection flushes it as a batched
+     * CAS_FC_CURSOR_CLOSE. A re-executed (live) cursor is never closed by a stale
+     * entry, and it is never closed at commit (holdable survives commit).
+     */
+    boolean cursorClosePending = false;
     private boolean realFetched;
     private boolean isUpdatable;
     private boolean isSensitive;
@@ -588,6 +596,8 @@ public class UStatement {
             return;
         }
         relatedConnection.pooled_ustmts.remove(this);
+        /* statement (handle) being freed → drop any deferred cursor close for it */
+        relatedConnection.removeDeferredCursorClose(this);
         currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
         isClosed = true;
         if (stmt_cache != null) {
@@ -665,6 +675,13 @@ public class UStatement {
 
     public synchronized void closeCursor() {
         if (relatedConnection.isConnectedToCubrid() == false) {
+            return;
+        }
+
+        if (relatedConnection.supportsBatchedCursorClose()) {
+            /* PROTOCOL_V13+: defer & batch (H2). Freed by re-execute supersede,
+             * batch max, or connection close — never at commit (H1). */
+            relatedConnection.addDeferredCursorClose(this);
             return;
         }
 
@@ -862,6 +879,10 @@ public class UStatement {
         UInputBuffer inBuffer = null;
         errorHandler.clear();
         relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
+
+        /* re-executing this handle supersedes any deferred cursor close for it
+         * (server ux_execute -> hm_qresult_end frees the previous result). */
+        relatedConnection.removeDeferredCursorClose(this);
 
         synchronized (relatedConnection) {
             writeExecuteRequest(maxField, isScrollable, queryTimeout, cacheData);
@@ -1080,6 +1101,9 @@ public class UStatement {
         UInputBuffer inBuffer = null;
         errorHandler.clear();
         relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
+
+        /* re-executing this handle supersedes any deferred cursor close for it */
+        relatedConnection.removeDeferredCursorClose(this);
 
         synchronized (relatedConnection) {
             writeExecuteBatchRequest(queryTimeout);
