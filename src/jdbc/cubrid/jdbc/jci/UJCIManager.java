@@ -48,6 +48,15 @@ public abstract class UJCIManager {
     static String sysCharsetName;
     static Hashtable<UUrlHostKey, UUrlCache> url_cache_table;
     static ArrayList<UUrlCache> url_cache_remove_list;
+    static ArrayList<java.lang.ref.WeakReference<UConnection>> holdable_conn_list;
+
+    // static final long HOLDABLE_CURSOR_TTL_MILLIS =
+    //         Long.getLong("cubrid.holdable.cursor.ttl.millis", 86400000L);
+    static final long HOLDABLE_CURSOR_TTL_MILLIS =
+            Long.getLong("cubrid.holdable.cursor.ttl.millis", 180000L);
+    static final long HOLDABLE_CURSOR_SCAN_TICKS =
+            Long.getLong("cubrid.holdable.cursor.scan.sec", 30L);
+
     static JdbcCacheWorker CACHE_Manager;
     static boolean result_cache_enable = true;
 
@@ -56,6 +65,7 @@ public abstract class UJCIManager {
         sysCharsetName = System.getProperty("file.encoding");
         url_cache_table = new Hashtable<UUrlHostKey, UUrlCache>(10);
         url_cache_remove_list = new ArrayList<UUrlCache>(10);
+        holdable_conn_list = new ArrayList<java.lang.ref.WeakReference<UConnection>>(10);
 
         try {
             CACHE_Manager = new JdbcCacheWorker();
@@ -107,6 +117,35 @@ public abstract class UJCIManager {
         return url_cache;
     }
 
+    static void registerHoldableConn(UConnection c) {
+        if (c == null) return;
+        synchronized (holdable_conn_list) {
+            holdable_conn_list.add(new java.lang.ref.WeakReference<UConnection>(c));
+        }
+    }
+
+    static void scanExpiredHoldableCursors() {
+        ArrayList<java.lang.ref.WeakReference<UConnection>> snapshot;
+        synchronized (holdable_conn_list) {
+            snapshot = new ArrayList<java.lang.ref.WeakReference<UConnection>>(holdable_conn_list);
+        }
+        for (int i = 0; i < snapshot.size(); i++) {
+            UConnection c = snapshot.get(i).get();
+            if (c == null) continue;
+            try {
+                c.closeExpiredHoldableCursors(HOLDABLE_CURSOR_TTL_MILLIS);
+            } catch (Exception e) {
+            }
+        }
+        synchronized (holdable_conn_list) {
+            for (int i = holdable_conn_list.size() - 1; i >= 0; i--) {
+                if (holdable_conn_list.get(i).get() == null) {
+                    holdable_conn_list.remove(i);
+                }
+            }
+        }
+    }
+
     /*
      * delete the UConnection object from connection list
      *
@@ -118,6 +157,8 @@ public abstract class UJCIManager {
 }
 
 class JdbcCacheWorker extends Thread {
+    private long holdableScanTick = 0;
+
     public void run() {
         while (true) {
             try {
@@ -129,6 +170,14 @@ class JdbcCacheWorker extends Thread {
                             uc.remove_expired_stmt(curTime);
                         }
                     }
+                }
+            } catch (Exception e) {
+            }
+
+            try {
+                if (++holdableScanTick >= UJCIManager.HOLDABLE_CURSOR_SCAN_TICKS) {
+                    holdableScanTick = 0;
+                    UJCIManager.scanExpiredHoldableCursors();
                 }
             } catch (Exception e) {
             }
