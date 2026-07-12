@@ -88,14 +88,10 @@ public class UStatement {
 
     private UConnection relatedConnection;
     private boolean isClosed;
-    /*
-     * PROTOCOL_V13+ deferred holdable-cursor close. Set on ResultSet.close();
-     * cleared on (re-)execute of this handle and on statement close. This
-     * per-statement flag is authoritative; UConnection flushes it as a batched
-     * CAS_FC_CURSOR_CLOSE. A re-executed (live) cursor is never closed by a stale
-     * entry, and it is never closed at commit (holdable survives commit).
-     */
+
     boolean cursorClosePending = false;
+    long holdableCursorOpenMillis = 0;
+
     private boolean realFetched;
     private boolean isUpdatable;
     private boolean isSensitive;
@@ -598,6 +594,7 @@ public class UStatement {
         relatedConnection.pooled_ustmts.remove(this);
         /* statement (handle) being freed → drop any deferred cursor close for it */
         relatedConnection.removeDeferredCursorClose(this);
+        holdableCursorOpenMillis = 0;
         currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
         isClosed = true;
         if (stmt_cache != null) {
@@ -914,6 +911,12 @@ public class UStatement {
                 relatedConnection.update_executed = true;
                 break;
             }
+        }
+
+        if (relatedConnection.supportsBatchedCursorClose()
+                && (executeFlag & EXEC_FLAG_HOLDABLE_RESULT) != 0) {
+            holdableCursorOpenMillis = System.currentTimeMillis();
+            relatedConnection.registerHoldableCursors();
         }
     }
 

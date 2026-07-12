@@ -1969,6 +1969,7 @@ public abstract class UConnection {
                 UStatement s = pooled_ustmts.get(i);
                 if (s != null) {
                     s.cursorClosePending = false;
+                    s.holdableCursorOpenMillis = 0;
                 }
             }
         }
@@ -2008,7 +2009,82 @@ public abstract class UConnection {
         } catch (IOException e) {
             logException(e);
         } finally {
-            clearDeferredCursorClose();
+            /* only the pending (closed) statements were sent; reset just those so
+             * still-open (non-pending) holdable cursors remain tracked. */
+            for (int i = 0; i < pooled_ustmts.size(); i++) {
+                UStatement s = pooled_ustmts.get(i);
+                if (s != null && s.cursorClosePending) {
+                    s.cursorClosePending = false;
+                    s.holdableCursorOpenMillis = 0;
+                }
+            }
+            deferredCursorCloseCount = 0;
+        }
+    }
+
+    private boolean holdableRegistered = false;
+
+    void registerHoldableCursors() {
+        if (!holdableRegistered) {
+            holdableRegistered = true;
+            UJCIManager.registerHoldableConn(this);
+        }
+    }
+
+    void closeExpiredHoldableCursors(long ttlMillis) {
+        if (pooled_ustmts == null || isClosed || needReconnection) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        synchronized (this) {
+            if (isClosed
+                    || needReconnection
+                    || client == null
+                    || isConnectedToCubrid() == false) {
+                return;
+            }
+            UFunctionCode code = UFunctionCode.CURSOR_CLOSE;
+            if (protoVersionIsSame(PROTOCOL_V2)) {
+                code = UFunctionCode.CURSOR_CLOSE_FOR_PROTOCOL_V2;
+            }
+            java.util.ArrayList<UStatement> victims = null;
+            for (int i = 0; i < pooled_ustmts.size(); i++) {
+                UStatement s = pooled_ustmts.get(i);
+                if (s != null
+                        && !s.isClosed()
+                        && s.holdableCursorOpenMillis > 0
+                        && (now - s.holdableCursorOpenMillis) >= ttlMillis) {
+                    if (victims == null) {
+                        victims = new java.util.ArrayList<UStatement>();
+                    }
+                    victims.add(s);
+                }
+            }
+            if (victims == null) {
+                return;
+            }
+            try {
+                outBuffer.newRequest(code);
+                for (int i = 0; i < victims.size(); i++) {
+                    outBuffer.addInt(victims.get(i).getServerHandle());
+                }
+                send_recv_msg();
+            } catch (UJciException e) {
+                logException(e);
+            } catch (IOException e) {
+                logException(e);
+            } finally {
+                for (int i = 0; i < victims.size(); i++) {
+                    UStatement s = victims.get(i);
+                    if (s.cursorClosePending) {
+                        s.cursorClosePending = false;
+                        if (deferredCursorCloseCount > 0) {
+                            deferredCursorCloseCount--;
+                        }
+                    }
+                    s.holdableCursorOpenMillis = 0;
+                }
+            }
         }
     }
 
