@@ -676,8 +676,6 @@ public class UStatement {
         }
 
         if (relatedConnection.supportsBatchedCursorClose()) {
-            /* PROTOCOL_V13+: defer & batch (H2). Freed by re-execute supersede,
-             * batch max, or connection close — never at commit (H1). */
             relatedConnection.addDeferredCursorClose(this);
             return;
         }

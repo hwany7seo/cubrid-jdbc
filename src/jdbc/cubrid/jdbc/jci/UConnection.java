@@ -259,13 +259,8 @@ public abstract class UConnection {
     boolean skip_checkcas = false;
     Vector<UStatement> pooled_ustmts;
     Vector<Integer> deferred_close_handle;
-    /*
-     * Deferred holdable-cursor close (PROTOCOL_V13+). Count of live statements
-     * marked UStatement.cursorClosePending; the per-statement flag is
-     * authoritative. Explicit rs.close() is batched and flushed as one multi-id
-     * CAS_FC_CURSOR_CLOSE at DEFERRED_CURSOR_CLOSE_MAX (H2). commit never flushes
-     * (holdable survives commit, H1).
-     */
+    private boolean holdableRegistered = false;
+    
     private int deferredCursorCloseCount = 0;
     private static final int DEFERRED_CURSOR_CLOSE_MAX = 5;
 
@@ -2021,8 +2016,6 @@ public abstract class UConnection {
             deferredCursorCloseCount = 0;
         }
     }
-
-    private boolean holdableRegistered = false;
 
     void registerHoldableCursors() {
         if (!holdableRegistered) {
