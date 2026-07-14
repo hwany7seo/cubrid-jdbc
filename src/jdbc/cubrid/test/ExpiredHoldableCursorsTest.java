@@ -9,14 +9,19 @@ import java.sql.Statement;
 /**
  * holdable cursor close 최적화 통합 테스트.
  *
- * <p>두 케이스를 한 파일에서 검증한다.
+ * <p>세 케이스를 한 파일에서 검증한다.
  * <ul>
  *   <li><b>Case 3 (정상 close 배치)</b>: 유저가 holdable ResultSet 을 정상적으로
  *       rs.close() 하면 즉시 전송하지 않고 모아 두었다가 **5개**째에 한 번의
  *       배치 CAS_FC_CURSOR_CLOSE 로 전송한다. (H2)</li>
  *   <li><b>Case 2 (스케줄러 TTL close, P3)</b>: 유저가 닫지 않고 방치한 holdable
  *       커서를 백그라운드 데몬이 open 후 TTL 경과 시 닫는다.</li>
+ *   <li><b>P4 (외부 풀 재사용 안전망)</b>: 방치 커서가 있어도 같은 물리 커넥션
+ *       재사용은 무영향이며, 스케줄러는 <em>오래된 방치 커서만</em> 닫고
+ *       <em>갓 연 활성 커서</em>는 건드리지 않는다("다른 작업 사용 시 무영향").</li>
  * </ul>
+ *
+ * <p><b>주의</b>: Case 2 와 P4 가 각각 TTL 대기를 하므로 총 대기는 약 <b>2 × 인자[0]</b> 초다.
  *
  * <p>서버측 실제 close 는 CAS 로그의 "cursor_close srv_h_id ..." 로 확인할 수 있고,
  * 본 테스트는 클라이언트에서 관측 가능한 것(예외 없음/연결 정상/방치 커서의
@@ -72,6 +77,7 @@ public class ExpiredHoldableCursorsTest {
 
             // 스케줄러(대기 포함) 마지막
             scenarioSchedulerClosesAbandoned(conn, waitSec); // Case 2 / P3
+            scenarioPoolReuseSafety(conn, waitSec);          // P4 (외부 풀 재사용 안전망)
         } finally {
             teardown(conn);
             try {
@@ -194,6 +200,80 @@ public class ExpiredHoldableCursorsTest {
     }
 
     // ------------------------------------------------------------------
+    // P4 — 외부 풀(plain-wrap) 재사용 안전망
+    //   외부 풀은 반납 시 드라이버 훅이 없어(Java1.8→endRequest 불가) 방치 커서를
+    //   스케줄러가 회수한다. 여기서는 (i) 방치 커서가 있어도 같은 물리 커넥션
+    //   재사용이 무영향이고, (ii) 스케줄러가 '오래된 방치 커서'만 닫고 '갓 연
+    //   활성 커서'는 건드리지 않음(재사용 무영향)을 관측한다.
+    // ------------------------------------------------------------------
+    private static void scenarioPoolReuseSafety(Connection conn, int waitSec) {
+        System.out.println();
+        System.out.println("[SCENARIO P4] external-pool reuse safety "
+                + "(abandoned reaped, reuse & live cursor unaffected)");
+        boolean prevAuto = true;
+        PreparedStatement psA = null; // Task A: 방치(오래된) holdable 커서
+        ResultSet rsA = null;
+        PreparedStatement psB = null; // Task B: 대기 후 갓 연 활성 holdable 커서
+        ResultSet rsB = null;
+        try {
+            prevAuto = conn.getAutoCommit();
+            conn.setAutoCommit(true);
+
+            // 1) Task A: holdable 커서 1행만 읽고 방치(닫지 않음).
+            //    외부 plain-wrap 풀에서 "정리 없이 반납"된 상황 모사(open 시각 = 지금).
+            psA = holdable(conn, "SELECT id, val, 100 AS m FROM " + TABLE + " ORDER BY id");
+            psA.setFetchSize(10);
+            rsA = psA.executeQuery();
+            rsA.next();
+            rsA.getInt(1);
+            System.out.println("  Task A: holdable 커서 1행 읽고 방치(풀 반납 시 미정리 가정)");
+
+            // 2) 같은 물리 커넥션을 Task B 로 여러 번 재사용 — 방치 커서 영향 없어야 한다.
+            final int reuseRounds = 3;
+            boolean reuseOk = true;
+            for (int r = 0; r < reuseRounds; r++) {
+                if (!fullScan(conn)) {
+                    reuseOk = false;
+                    break;
+                }
+            }
+            check("P4: 방치 커서가 있어도 같은 커넥션 재사용(" + reuseRounds + "회) 결과 정상",
+                    reuseOk, "재사용 중 결과 불일치/예외 — 방치 커서가 재사용에 영향");
+
+            // 3) 스케줄러 TTL 대기 — Task A(오래된) 커서가 닫히도록.
+            System.out.println("  스케줄러(TTL) 추가 대기 " + waitSec + "s ...");
+            sleepSeconds(waitSec);
+
+            // 4) 대기 직후 '갓 연' Task B holdable 커서 — open 시각이 방금이라 TTL 미경과.
+            psB = holdable(conn, "SELECT id, val, 200 AS m FROM " + TABLE + " ORDER BY id");
+            psB.setFetchSize(10);
+            rsB = psB.executeQuery();
+
+            // 5) Task A 방치(오래된) 커서: 스케줄러가 닫아 조기 종료(잘림) 관측.
+            boolean aCut = readIsCut(rsA, 1);
+            check("P4: 오래된 방치 커서는 스케줄러가 닫음", aCut,
+                    "방치 커서가 여전히 열려 있음 — TTL/대기(-D, 인자[0]) 확인");
+
+            // 6) 갓 연 Task B 활성 커서: TTL 미경과라 끝까지 읽혀야(닫히면 안 됨).
+            //    → "유저가 다시 다른 작업을 사용할 때 영향받지 않는다" 를 직접 증명.
+            boolean bCut = readIsCut(rsB, 0);
+            check("P4: 갓 연 활성 커서는 스케줄러가 닫지 않음(재사용 무영향)", !bCut,
+                    "활성 커서가 조기 종료됨 — 스케줄러가 live 커서를 오close");
+
+            // 7) 연결은 여전히 정상.
+            check("P4: 스케줄러 동작 후에도 연결 정상 사용 가능", pingConnection(conn), "ping 실패");
+        } catch (SQLException e) {
+            check("P4: 시나리오 수행 중 예외 없음", false, "SQLException: " + e.getMessage());
+        } finally {
+            closeQuietly(rsA);
+            closeQuietly(psA);
+            closeQuietly(rsB);
+            closeQuietly(psB);
+            restoreAuto(conn, prevAuto);
+        }
+    }
+
+    // ------------------------------------------------------------------
     // H1 sanity — commit 이후에도 holdable 커서 유지(스케줄러/배치와 무관)
     // ------------------------------------------------------------------
     private static void scenarioHoldableSurvivesCommit(Connection conn) {
@@ -246,6 +326,45 @@ public class ExpiredHoldableCursorsTest {
         } finally {
             closeQuietly(rs);
             closeQuietly(st);
+        }
+    }
+
+    /** 새 statement 로 전체 ROWS 를 끝까지 읽어 재사용 정상성을 확인. 성공(=ROWS 도달) 시 true. */
+    private static boolean fullScan(Connection conn) {
+        Statement st = null;
+        ResultSet rs = null;
+        try {
+            st = conn.createStatement();
+            rs = st.executeQuery("SELECT id FROM " + TABLE + " ORDER BY id");
+            int n = 0;
+            while (rs.next()) {
+                rs.getInt(1);
+                n++;
+            }
+            return n == ROWS;
+        } catch (SQLException e) {
+            return false;
+        } finally {
+            closeQuietly(rs);
+            closeQuietly(st);
+        }
+    }
+
+    /**
+     * 현재 위치부터 최대 ROWS 까지 읽어, 끝까지 못 읽으면(조기 false 또는 예외) true(=커서 잘림).
+     * alreadyRead: 호출 전 이미 읽은 행 수(방치 커서는 보통 1, 갓 연 커서는 0).
+     */
+    private static boolean readIsCut(ResultSet rs, int alreadyRead) {
+        int rowsRead = alreadyRead;
+        try {
+            while (rs.next()) {
+                rs.getInt(1);
+                rowsRead++;
+                if (rowsRead >= ROWS) break;
+            }
+            return rowsRead < ROWS;
+        } catch (SQLException e) {
+            return true; // 서버 커서 닫힘 → fetch 실패
         }
     }
 

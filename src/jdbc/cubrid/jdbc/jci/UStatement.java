@@ -884,6 +884,14 @@ public class UStatement {
             inBuffer = relatedConnection.send_recv_msg();
         }
 
+        if (relatedConnection.supportsBatchedCursorClose()
+                && (executeFlag & EXEC_FLAG_HOLDABLE_RESULT) != 0) {
+            holdableCursorOpenMillis = System.currentTimeMillis();
+            relatedConnection.registerHoldableCursors();
+        } else {
+            holdableCursorOpenMillis = 0;
+        }
+
         // cache reusable
         byte cache_reusable = inBuffer.readByte();
         if (cacheData != null && cache_reusable == (byte) 1) {
@@ -909,12 +917,6 @@ public class UStatement {
                 relatedConnection.update_executed = true;
                 break;
             }
-        }
-
-        if (relatedConnection.supportsBatchedCursorClose()
-                && (executeFlag & EXEC_FLAG_HOLDABLE_RESULT) != 0) {
-            holdableCursorOpenMillis = System.currentTimeMillis();
-            relatedConnection.registerHoldableCursors();
         }
     }
 

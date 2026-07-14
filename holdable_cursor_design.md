@@ -149,8 +149,8 @@ non-holdable(N1): 종전과 동일 — 드라이버가 지연/tracking하지 않
 ## 9. 검토 · 결정 필요 사항
 
 1. **와이어**: V13 배치(서버 준비됨) vs 서버 무변경(개별 전송 버스트). → 배치 권장.
-2. ⏸ **(확정 보류 — 최후 단계)** **스케줄러 전송 방식**: 데몬 직접 전송(idle 연결도 회수) vs mark-only(다음 앱 op에서 전송) vs 하이브리드. P3에서 확정.
-3. ⏸ **(확정 보류 — 최후 단계)** **외부 풀 반납 훅**: HikariCP식 plain-wrap 외부 풀은 반납 시 드라이버 훅 없음 → 스케줄러 안전망. P4에서 확정.
+2. ✅ **(확정: direct-send)** **스케줄러 전송 방식**: 데몬이 connection 모니터(`synchronized(this)`) 하에서 직접 배치 close. 만료=유휴 커서라 활성 작업과 경합 거의 없음. P3 구현 완료.
+3. ✅ **(확정: 스케줄러 안전망 + 계층 방어)** **외부 풀 반납 훅**: 드라이버가 **Java 1.8 타깃**이라 JDBC 4.3 `Connection.endRequest()`(논리 반납 표준 훅, Java 9+) 사용 **불가**. HikariCP식 plain-wrap 풀은 반납 시 CUBRID 전용 훅이 없으므로, 아래 **4계층 방어**로 확정([§9-3-1](#9-3-1-p4-외부-풀-plain-wrap-안전망-확정)).
 4. **TTL 기준**: open 시각 vs last-access. → last-access 권장(활성 커서 보호).
 5. **테스트 값**: TTL 3min, 스캔 20s로 시작.
 
@@ -161,12 +161,35 @@ non-holdable(N1): 종전과 동일 — 드라이버가 지연/tracking하지 않
 | 단계 | 범위 | 핵심 |
 |---|---|---|
 | **P1** ✅ (2026-07-09 구현) | Case 3 + Case 1 + H1 | per-statement 지연 close, 배치 max 5(V13), 재실행 supersede, **commit 무동작(H1)**, rollback 폐기, V13 게이트/폴백 |
-| **P2** | H3 (연결 종료 flush) | `clear()`/`closeAllStatements` 경로에 지연분 flush — 물리 close + CUBRID풀·SPI 외부풀 논리반납 |
-| **P3 (최후·개별)** | §9-2 Case 2 스케줄러 | direct-send vs mark-only(하이브리드) 확정 후 구현 |
-| **P4 (최후·개별)** | §9-3 외부 풀(plain-wrap) 안전망 | HikariCP식 반납 무-훅 케이스 처리 확정 |
+| ~~**P2**~~ ✅ **이미 충족 (별도 구현 불필요)** | H3 (연결 종료) | 물리 close(`CUBRIDConnection.close`)·CUBRID/SPI풀 논리반납(`closeConnection`) 모두 `clear()`→`closeAllStatements()`가 각 holdable statement를 **CLOSE_USTATEMENT로 닫아 서버 결과 해제**하고, 이어 `CON_CLOSE`/서버 teardown이 전량 해제. 별도 flush는 CLOSE_USTATEMENT와 **중복 왕복**이라 불필요. (외부 plain-wrap 풀 반납은 eviction+P3/P4 스케줄러 담당) |
+| **P3** ✅ (2026-07-13 구현) | §9-2 Case 2 스케줄러 | **direct-send 채택.** 데몬(JdbcCacheWorker 확장)이 전역 WeakRef 레지스트리를 주기 스캔 → connection 모니터 하에서 open 후 TTL 경과 holdable 커서를 배치 close. TTL=`-Dcubrid.holdable.cursor.ttl.millis`(기본 24h/테스트 180000), 스캔주기=`-Dcubrid.holdable.cursor.scan.sec`(기본 30). TTL은 open 시각 기준(재실행마다 갱신 → 재사용 커서 보호). |
+| **P4** ✅ (2026-07-14 확정) | §9-3 외부 풀(plain-wrap) 안전망 | Java1.8→`endRequest` 불가. **4계층 방어**(①풀 자체 stmt-close ②P3 스케줄러 TTL ③물리 eviction=`CUBRIDConnection.close`→`closeAllStatements`→전량 해제 ④비정상 종료 시 서버 free_all)로 확정. 추가로 스케줄러 authoritative-state 갭 2건 보강: (a) 클라 result-cache 적중 시에도 open-time 갱신·등록, (b) non-holdable 재실행 시 timestamp 0으로 초기화 → 재사용 커서/핸들 오close 방지. |
 
-- **P1~P2만으로도** 정상 사용 패턴(재사용·정상 close·연결 종료)은 완전 동작하며, 서버 V13(구현됨)만으로 holdable 왕복 2→1 + 불변식(H1/H2/H3)을 충족한다.
-- P3~P4는 "방치(Case 2)" 안전망(자원 회수 강화). **P1~P2 안정화·검증 후** 하나씩 진행.
+- **P1 + 기존 연결종료 경로(=P2, 이미 충족)만으로도** 정상 사용 패턴(재사용·정상 close·연결 종료)은 완전 동작하며, 서버 V13(구현됨)만으로 holdable 왕복 2→1 + 불변식(H1/H2/H3)을 충족한다.
+- P3~P4는 "방치(Case 2)"·외부 plain-wrap 풀 안전망(자원 회수 강화). **P1 검증 후** 하나씩 진행. → **P4까지 모두 구현·확정 완료(2026-07-14).**
+
+## 9-3-1. P4: 외부 풀 plain-wrap 안전망 확정
+
+**문제**: HikariCP/DBCP 등 외부 plain-wrap 풀은 `Connection.close()`(프록시)를 물리 종료가 아니라 "논리 반납"으로 처리하고, 물리 `CUBRIDConnection`에는 CUBRID 전용 정리 훅을 호출하지 않는다. JDBC 4.3의 `beginRequest`/`endRequest`(논리 반납 표준 훅)는 **드라이버가 Java 1.8 타깃이라 인터페이스에 존재하지 않아 사용 불가**. 따라서 반납 시점에 드라이버가 능동적으로 개입할 지점이 없다.
+
+**결론 — 4계층 방어로 홀더블 커서 자원은 반드시 회수된다:**
+
+| 계층 | 시점 | 메커니즘 | 커버리지 |
+|---|---|---|---|
+| ① 풀 자체 stmt 추적 | 반납 시 | HikariCP가 추적한 Statement를 `close()` → `CUBRIDStatement.close`→`CLOSE_USTATEMENT`로 서버 결과 즉시 해제 | 앱이 연 statement 대부분 |
+| ② P3 스케줄러 TTL | 주기(운영 24h/테스트 3min) | 데몬이 WeakRef 레지스트리 스캔 → connection 모니터 하에서 open-time TTL 경과 holdable 커서 배치 close | ①에서 누락된 방치 커서 |
+| ③ 물리 eviction | maxLifetime/idleTimeout | 풀이 물리 종료 → `CUBRIDConnection.close`→`clear`→`closeAllStatements`(추적 중 전 statement close) + `CON_CLOSE` → 서버 전량 해제 | 남은 전부 |
+| ④ 비정상 종료 | 소켓 drop | 서버 강제 rollback + free_all | 크래시/네트워크 단절 |
+
+**풀 재사용 안전성**(holdable_work.md: "유저가 다시 다른 작업을 사용할 때 영향받지 않아야"):
+- **직렬화**: 스케줄러 `closeExpiredHoldableCursors`는 `synchronized(UConnection)` 획득. 앱의 execute/fetch 경로도 동일하게 `synchronized(relatedConnection)`(==같은 UConnection 객체). **동일 모니터 → 완전 직렬화**, 소켓 교착·프로토콜 오염 없음.
+- **per-statement authoritative**: 닫기 대상은 handle-id 목록이 아니라 각 `UStatement`의 상태(`!isClosed()` && `holdableCursorOpenMillis>0` && TTL 경과). Task A가 방치한 커서는 Task B의 새 handle과 다른 객체 → Task B 무영향. 재실행(supersede)은 open-time을 갱신하므로 live 커서는 close 대상에서 제외.
+
+**추가 보강 (스케줄러 authoritative-state 갭 2건, `UStatement.executeInternal`)**: 아래 두 경우에 per-statement 상태가 어긋나 스케줄러가 오판할 수 있어, holdable 생명주기 블록을 **라운드트립 직후·cache 조기 return 이전**으로 이동하고 `else` 초기화를 추가.
+- **(a) 클라이언트 result-cache 적중**: 캐시 적중 시 조기 `return`으로 open-time 갱신·등록을 건너뛰어, 재실행된 live holdable 커서를 스케줄러가 stale-old 타임스탬프로 **조기 close**할 위험 → 캐시 경로에서도 항상 갱신·등록.
+- **(b) non-holdable 재실행**: 같은 핸들이 holdable→non-holdable로 재실행돼도 `holdableCursorOpenMillis`가 남아 스케줄러가 non-holdable 커서를 victim으로 삼을 위험 → non-holdable(또는 구 브로커) 경로에서 `holdableCursorOpenMillis = 0` 초기화.
+
+> `endRequest` 훅은 드라이버가 Java 9+ 타깃으로 올라가면 ②의 지연을 없애는 즉시-정리 훅으로 추가 가능(선택). 현재는 4계층으로 충분.
 
 ---
 

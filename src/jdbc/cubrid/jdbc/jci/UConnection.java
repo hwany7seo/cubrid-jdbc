@@ -56,6 +56,7 @@ import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Vector;
+import java.util.ArrayList;
 import javax.transaction.xa.Xid;
 
 public abstract class UConnection {
@@ -2040,26 +2041,26 @@ public abstract class UConnection {
             if (protoVersionIsSame(PROTOCOL_V2)) {
                 code = UFunctionCode.CURSOR_CLOSE_FOR_PROTOCOL_V2;
             }
-            java.util.ArrayList<UStatement> victims = null;
+            ArrayList<UStatement> closeList = null;
             for (int i = 0; i < pooled_ustmts.size(); i++) {
                 UStatement s = pooled_ustmts.get(i);
                 if (s != null
                         && !s.isClosed()
                         && s.holdableCursorOpenMillis > 0
                         && (now - s.holdableCursorOpenMillis) >= ttlMillis) {
-                    if (victims == null) {
-                        victims = new java.util.ArrayList<UStatement>();
+                    if (closeList == null) {
+                    	closeList = new ArrayList<UStatement>();
                     }
-                    victims.add(s);
+                    closeList.add(s);
                 }
             }
-            if (victims == null) {
+            if (closeList == null) {
                 return;
             }
             try {
                 outBuffer.newRequest(code);
-                for (int i = 0; i < victims.size(); i++) {
-                    outBuffer.addInt(victims.get(i).getServerHandle());
+                for (int i = 0; i < closeList.size(); i++) {
+                    outBuffer.addInt(closeList.get(i).getServerHandle());
                 }
                 send_recv_msg();
             } catch (UJciException e) {
@@ -2067,8 +2068,8 @@ public abstract class UConnection {
             } catch (IOException e) {
                 logException(e);
             } finally {
-                for (int i = 0; i < victims.size(); i++) {
-                    UStatement s = victims.get(i);
+                for (int i = 0; i < closeList.size(); i++) {
+                    UStatement s = closeList.get(i);
                     if (s.cursorClosePending) {
                         s.cursorClosePending = false;
                         if (deferredCursorCloseCount > 0) {
