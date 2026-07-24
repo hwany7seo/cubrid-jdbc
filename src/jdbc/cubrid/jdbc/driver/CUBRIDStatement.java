@@ -859,9 +859,7 @@ public class CUBRIDStatement implements Statement {
 
         setShardId(UShardInfo.SHARD_ID_INVALID);
 
-        if (query_timeout > 0
-                && (u_con.isConnectedToCubrid() == false
-                        || u_con.protoVersionIsAbove(1) == false)) {
+        if (query_timeout > 0 && u_con.isConnectedToCubrid() == false) {
             t = new CUBRIDCancelQueryThread(this, query_timeout);
             t.start();
 

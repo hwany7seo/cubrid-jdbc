@@ -253,7 +253,6 @@ public abstract class UConnection {
     protected String url = null;
 
     protected byte sessionId[] = createNullSession();
-    protected int oldSessionId = 0;
 
     boolean skip_checkcas = false;
     Vector<UStatement> pooled_ustmts;
@@ -335,7 +334,6 @@ public abstract class UConnection {
             outBuffer.newRequest(output, UFunctionCode.END_SESSION);
             send_recv_msg();
             sessionId = createNullSession();
-            oldSessionId = 0;
         } catch (Exception e) {
         }
     }
@@ -521,9 +519,7 @@ public abstract class UConnection {
             else outBuffer.addStringWithNull(arg2);
             outBuffer.addByte(flag);
 
-            if (protoVersionIsAbove(PROTOCOL_V5)) {
-                outBuffer.addInt(shard_id);
-            }
+            outBuffer.addInt(shard_id);
 
             UInputBuffer inBuffer;
             inBuffer = send_recv_msg();
@@ -566,13 +562,11 @@ public abstract class UConnection {
 
             outBuffer.newRequest(output, UFunctionCode.EXECUTE_BATCH_STATEMENT);
             outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
-            if (protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
-                long remainingTime = getRemainingTime(queryTimeout * 1000);
-                if (queryTimeout > 0 && remainingTime <= 0) {
-                    throw createJciException(UErrorCode.ER_TIMEOUT);
-                }
-                outBuffer.addInt((int) remainingTime);
+            long remainingTime = getRemainingTime(queryTimeout * 1000);
+            if (queryTimeout > 0 && remainingTime <= 0) {
+                throw createJciException(UErrorCode.ER_TIMEOUT);
             }
+            outBuffer.addInt((int) remainingTime);
 
             for (int i = 0; i < batchSqlStmt.length; i++) {
                 if (batchSqlStmt[i] != null) outBuffer.addStringWithNull(batchSqlStmt[i]);
@@ -602,9 +596,7 @@ public abstract class UConnection {
                 }
             }
 
-            if (protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
-                setShardId(inBuffer.readInt());
-            }
+            setShardId(inBuffer.readInt());
 
             update_executed = true;
             return batchResult;
@@ -1377,9 +1369,6 @@ public abstract class UConnection {
      * requests via broker handler
      */
     public boolean isValid(int timeout) throws SQLException {
-        if (protoVersionIsUnder(PROTOCOL_V9)) {
-            return !isClosed;
-        }
         try {
             byte[] session = new byte[4];
             for (int i = 0; i < 4; i++) session[i] = sessionId[i + 8];
@@ -1396,11 +1385,7 @@ public abstract class UConnection {
     }
 
     void cancel() throws UJciException, IOException {
-        if (protoVersionIsAbove(PROTOCOL_V4)) {
-            BrokerHandler.cancelBrokerEx(casIp, casPort, casProcessId, READ_TIMEOUT);
-        } else {
-            BrokerHandler.cancelBroker(casIp, casPort, casProcessId, READ_TIMEOUT);
-        }
+        BrokerHandler.cancelBrokerEx(casIp, casPort, casProcessId, READ_TIMEOUT);
     }
 
     /*
@@ -1705,7 +1690,7 @@ public abstract class UConnection {
     }
 
     public boolean supportHoldableResult() {
-        if (brokerInfoSupportHoldableResult() || protoVersionIsSame(UConnection.PROTOCOL_V2)) {
+        if (brokerInfoSupportHoldableResult()) {
             return true;
         }
 
@@ -1929,17 +1914,13 @@ public abstract class UConnection {
         }
         // set the session id
         if (brokerInfoVersion() == 0) {
-            /* Interpretable session information supporting version
-             *   later than PROTOCOL_V3 as well as version earlier
-             *   than PROTOCOL_V3 should be delivered since no broker information
-             *   is provided at the time of initial connection.
+            /* No broker information is provided at the time of initial connection,
+             * so a null session id is delivered.
              */
             String id = "0";
             UJCIUtil.copy_bytes(dbInfo, 608, 20, id);
-        } else if (protoVersionIsAbove(PROTOCOL_V3)) {
-            System.arraycopy(sessionId, 0, dbInfo, 608, 20);
         } else {
-            UJCIUtil.copy_bytes(dbInfo, 608, 20, new Integer(oldSessionId).toString());
+            System.arraycopy(sessionId, 0, dbInfo, 608, 20);
         }
 
         if (outBuffer == null) {

@@ -178,8 +178,7 @@ class UInputBuffer {
     }
 
     int convertErrorByVersion(int indicator, int error) {
-        if (!uconn.protoVersionIsSame(UConnection.PROTOCOL_V2)
-                && !uconn.brokerInfoRenewedErrorCode()) {
+        if (!uconn.brokerInfoRenewedErrorCode()) {
             if (indicator == UErrorCode.CAS_ERROR_INDICATOR
                     || error == UErrorCode.CAS_ER_NOT_AUTHORIZED_CLIENT) {
                 // old error converts to new error
