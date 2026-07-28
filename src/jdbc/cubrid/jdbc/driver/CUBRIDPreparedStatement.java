@@ -345,9 +345,10 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
         checkBindError();
     }
 
+    @Deprecated
     public void setUnicodeStream(int parameterIndex, InputStream x, int length)
             throws SQLException {
-        throw new SQLException(new UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     public synchronized void setBinaryStream(int parameterIndex, InputStream x, int length)
@@ -576,7 +577,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
     }
 
     public void setRef(int i, Ref x) throws SQLException {
-        throw new SQLException(new UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     public void setBlob(int parameterIndex, Blob x) throws SQLException {
@@ -676,7 +677,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
     }
 
     public void setArray(int i, Array x) throws SQLException {
-        throw new SQLException(new UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     public synchronized ResultSetMetaData getMetaData() throws SQLException {
@@ -810,7 +811,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
 
     // 3.0
     public synchronized ParameterMetaData getParameterMetaData() throws SQLException {
-        throw new SQLException(new UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
         /*
          * checkIsOpen();
          *
@@ -827,7 +828,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
     }
 
     public synchronized void setURL(int index, URL x) throws SQLException {
-        throw new SQLException(new UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     // 3.0
@@ -959,7 +960,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
     public void setBinaryStream(int parameterIndex, InputStream x) throws SQLException {
         // TODO: How to solve it? host variable bind problem
         // setBlob(parameterIndex, x);
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
@@ -967,28 +968,28 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
             throws SQLException {
         // TODO: How to solve it? host variable bind problem
         // setBlob(parameterIndex, x, length);
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setAsciiStream(int parameterIndex, InputStream x) throws SQLException {
         // TODO: How to solve it? host variable bind problem
         // setClob(parameterIndex, x);
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setAsciiStream(int parameterIndex, InputStream x, long length) throws SQLException {
         // TODO: How to solve it? host variable bind problem
         // setClob(parameterIndex, x, length);
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setCharacterStream(int parameterIndex, Reader reader) throws SQLException {
         // TODO: How to solve it? host variable bind problem
         // setClob(parameterIndex, reader);
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
@@ -996,47 +997,47 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
             throws SQLException {
         // TODO: How to solve it? host variable bind problem
         // setClob(parameterIndex, reader, length);
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setNCharacterStream(int parameterIndex, Reader value) throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setNCharacterStream(int parameterIndex, Reader value, long length)
             throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setNClob(int parameterIndex, NClob value) throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setNClob(int parameterIndex, Reader reader) throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setNClob(int parameterIndex, Reader reader, long length) throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setNString(int parameterIndex, String value) throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setRowId(int parameterIndex, RowId x) throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 
     /* JDK 1.6 */
     public void setSQLXML(int parameterIndex, SQLXML xmlObject) throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        throw CUBRIDException.notSupported();
     }
 }
