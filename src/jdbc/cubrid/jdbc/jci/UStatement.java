@@ -88,6 +88,9 @@ public class UStatement {
 
     private UConnection relatedConnection;
     private boolean isClosed;
+
+    boolean cursorClosePending = false;
+
     private boolean realFetched;
     private boolean isUpdatable;
     private boolean isSensitive;
@@ -588,6 +591,7 @@ public class UStatement {
             return;
         }
         relatedConnection.pooled_ustmts.remove(this);
+        relatedConnection.removeDeferredCursorClose(this);
         currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
         isClosed = true;
         if (stmt_cache != null) {
@@ -665,6 +669,11 @@ public class UStatement {
 
     public synchronized void closeCursor() {
         if (relatedConnection.isConnectedToCubrid() == false) {
+            return;
+        }
+
+        if (relatedConnection.supportsBatchedCursorClose()) {
+            relatedConnection.addDeferredCursorClose(this);
             return;
         }
 
@@ -850,6 +859,8 @@ public class UStatement {
         UInputBuffer inBuffer = null;
         errorHandler.clear();
         relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
+
+        relatedConnection.removeDeferredCursorClose(this);
 
         synchronized (relatedConnection) {
             writeExecuteRequest(maxField, isScrollable, queryTimeout, cacheData);
@@ -1059,6 +1070,8 @@ public class UStatement {
         UInputBuffer inBuffer = null;
         errorHandler.clear();
         relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
+
+        relatedConnection.removeDeferredCursorClose(this);
 
         synchronized (relatedConnection) {
             writeExecuteBatchRequest(queryTimeout);

@@ -101,9 +101,10 @@ public abstract class UConnection {
 
     public static final int PROTOCOL_V11 = 11;
     public static final int PROTOCOL_V12 = 12;
+    public static final int PROTOCOL_V13 = 13;
 
     /* Current protocol version */
-    protected static final byte CAS_PROTOCOL_VERSION = PROTOCOL_V12;
+    protected static final byte CAS_PROTOCOL_VERSION = PROTOCOL_V13;
     protected static final byte CAS_PROTO_INDICATOR = 0x40;
     protected static final byte CAS_PROTO_VER_MASK = 0x3F;
     protected static final byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;
@@ -257,6 +258,11 @@ public abstract class UConnection {
     boolean skip_checkcas = false;
     Vector<UStatement> pooled_ustmts;
     Vector<Integer> deferred_close_handle;
+    
+    private int deferredCursorCloseCount = 0;
+    private static final int DEFERRED_CURSOR_CLOSE_MAX = 5;
+    private long deferredCloseFirstMillis = 0;
+    private boolean deferredCloseRegistered = false;
 
     private long beginTime;
 
@@ -1806,6 +1812,8 @@ public abstract class UConnection {
         }
         clearPooledUStatements();
         deferred_close_handle.clear();
+        deferredCursorCloseCount = 0;
+        deferredCloseFirstMillis = 0;
     }
 
     UInputBuffer send_recv_msg(boolean recv_result, int timeout) throws UJciException, IOException {
@@ -1899,6 +1907,118 @@ public abstract class UConnection {
             return true;
         }
         return false;
+    }
+
+    public boolean supportsBatchedCursorClose() {
+        return protoVersionIsAbove(PROTOCOL_V13);
+    }
+
+    void addDeferredCursorClose(UStatement stmt) {
+        if (stmt == null || stmt.cursorClosePending) {
+            return;
+        }
+        stmt.cursorClosePending = true;
+        if (deferredCursorCloseCount == 0) {
+            deferredCloseFirstMillis = System.currentTimeMillis();
+            if (!deferredCloseRegistered) {
+                deferredCloseRegistered = true;
+                UJCIManager.registerDeferredCloseConn(this);
+            }
+        }
+        deferredCursorCloseCount++;
+        if (deferredCursorCloseCount >= DEFERRED_CURSOR_CLOSE_MAX) {
+            flushDeferredCursorClose();
+        }
+    }
+
+    void removeDeferredCursorClose(UStatement stmt) {
+        if (stmt == null || !stmt.cursorClosePending) {
+            return;
+        }
+        stmt.cursorClosePending = false;
+        if (deferredCursorCloseCount > 0) {
+            deferredCursorCloseCount--;
+        }
+        if (deferredCursorCloseCount == 0) {
+            deferredCloseFirstMillis = 0;
+        }
+    }
+
+    void clearDeferredCursorClose() {
+        if (pooled_ustmts != null) {
+            for (int i = 0; i < pooled_ustmts.size(); i++) {
+                UStatement s = pooled_ustmts.get(i);
+                if (s != null) {
+                    s.cursorClosePending = false;
+                }
+            }
+        }
+        deferredCursorCloseCount = 0;
+        deferredCloseFirstMillis = 0;
+    }
+
+    void flushDeferredCursorClose() {
+        synchronized (this) {
+            if (deferredCursorCloseCount <= 0 || pooled_ustmts == null) {
+                deferredCursorCloseCount = 0;
+                deferredCloseFirstMillis = 0;
+                return;
+            }
+            if (isConnectedToCubrid() == false) {
+                clearDeferredCursorClose();
+                return;
+            }
+            UFunctionCode code = UFunctionCode.CURSOR_CLOSE;
+            try {
+                boolean any = false;
+                for (int i = 0; i < pooled_ustmts.size(); i++) {
+                    UStatement s = pooled_ustmts.get(i);
+                    if (s != null && s.cursorClosePending && !s.isClosed()) {
+                        if (!any) {
+                            outBuffer.newRequest(code);
+                            any = true;
+                        }
+                        outBuffer.addInt(s.getServerHandle());
+                    }
+                }
+                if (any) {
+                    send_recv_msg();
+                }
+            } catch (UJciException e) {
+                logException(e);
+            } catch (IOException e) {
+                logException(e);
+            } finally {
+                for (int i = 0; i < pooled_ustmts.size(); i++) {
+                    UStatement s = pooled_ustmts.get(i);
+                    if (s != null && s.cursorClosePending) {
+                        s.cursorClosePending = false;
+                    }
+                }
+                deferredCursorCloseCount = 0;
+                deferredCloseFirstMillis = 0;
+            }
+        }
+    }
+
+    void flushExpiredDeferredCursorClose(long ttlMillis) {
+        if (deferredCursorCloseCount <= 0 || isClosed || needReconnection) {
+            return;
+        }
+        synchronized (this) {
+            if (deferredCursorCloseCount <= 0
+                    || isClosed
+                    || needReconnection
+                    || client == null
+                    || isConnectedToCubrid() == false) {
+                return;
+            }
+            if (deferredCloseFirstMillis <= 0
+                    || (System.currentTimeMillis() - deferredCloseFirstMillis) < ttlMillis) {
+                return;
+            }
+            flushDeferredCursorClose();
+        }
     }
 
     public static boolean protoVersionIsLower(int ver) {
