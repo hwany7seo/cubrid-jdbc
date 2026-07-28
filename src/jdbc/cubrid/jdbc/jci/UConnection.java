@@ -260,7 +260,6 @@ public abstract class UConnection {
     boolean skip_checkcas = false;
     Vector<UStatement> pooled_ustmts;
     Vector<Integer> deferred_close_handle;
-    private boolean holdableRegistered = false;
     
     private int deferredCursorCloseCount = 0;
     private static final int DEFERRED_CURSOR_CLOSE_MAX = 5;
@@ -1954,7 +1953,6 @@ public abstract class UConnection {
                 UStatement s = pooled_ustmts.get(i);
                 if (s != null) {
                     s.cursorClosePending = false;
-                    s.holdableCursorOpenMillis = 0;
                 }
             }
         }
@@ -1995,79 +1993,14 @@ public abstract class UConnection {
             logException(e);
         } finally {
             /* only the pending (closed) statements were sent; reset just those so
-             * still-open (non-pending) holdable cursors remain tracked. */
+             * still-open (non-pending) holdable cursors survive (H1). */
             for (int i = 0; i < pooled_ustmts.size(); i++) {
                 UStatement s = pooled_ustmts.get(i);
                 if (s != null && s.cursorClosePending) {
                     s.cursorClosePending = false;
-                    s.holdableCursorOpenMillis = 0;
                 }
             }
             deferredCursorCloseCount = 0;
-        }
-    }
-
-    void registerHoldableCursors() {
-        if (!holdableRegistered) {
-            holdableRegistered = true;
-            UJCIManager.registerHoldableConn(this);
-        }
-    }
-
-    void closeExpiredHoldableCursors(long ttlMillis) {
-        if (pooled_ustmts == null || isClosed || needReconnection) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        synchronized (this) {
-            if (isClosed
-                    || needReconnection
-                    || client == null
-                    || isConnectedToCubrid() == false) {
-                return;
-            }
-            UFunctionCode code = UFunctionCode.CURSOR_CLOSE;
-            if (protoVersionIsSame(PROTOCOL_V2)) {
-                code = UFunctionCode.CURSOR_CLOSE_FOR_PROTOCOL_V2;
-            }
-            ArrayList<UStatement> closeList = null;
-            for (int i = 0; i < pooled_ustmts.size(); i++) {
-                UStatement s = pooled_ustmts.get(i);
-                if (s != null
-                        && !s.isClosed()
-                        && s.holdableCursorOpenMillis > 0
-                        && (now - s.holdableCursorOpenMillis) >= ttlMillis) {
-                    if (closeList == null) {
-                    	closeList = new ArrayList<UStatement>();
-                    }
-                    closeList.add(s);
-                }
-            }
-            if (closeList == null) {
-                return;
-            }
-            try {
-                outBuffer.newRequest(code);
-                for (int i = 0; i < closeList.size(); i++) {
-                    outBuffer.addInt(closeList.get(i).getServerHandle());
-                }
-                send_recv_msg();
-            } catch (UJciException e) {
-                logException(e);
-            } catch (IOException e) {
-                logException(e);
-            } finally {
-                for (int i = 0; i < closeList.size(); i++) {
-                    UStatement s = closeList.get(i);
-                    if (s.cursorClosePending) {
-                        s.cursorClosePending = false;
-                        if (deferredCursorCloseCount > 0) {
-                            deferredCursorCloseCount--;
-                        }
-                    }
-                    s.holdableCursorOpenMillis = 0;
-                }
-            }
         }
     }
 

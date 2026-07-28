@@ -90,7 +90,6 @@ public class UStatement {
     private boolean isClosed;
 
     boolean cursorClosePending = false;
-    long holdableCursorOpenMillis = 0;
 
     private boolean realFetched;
     private boolean isUpdatable;
@@ -594,7 +593,6 @@ public class UStatement {
         relatedConnection.pooled_ustmts.remove(this);
         /* statement (handle) being freed → drop any deferred cursor close for it */
         relatedConnection.removeDeferredCursorClose(this);
-        holdableCursorOpenMillis = 0;
         currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
         isClosed = true;
         if (stmt_cache != null) {
@@ -882,14 +880,6 @@ public class UStatement {
         synchronized (relatedConnection) {
             writeExecuteRequest(maxField, isScrollable, queryTimeout, cacheData);
             inBuffer = relatedConnection.send_recv_msg();
-        }
-
-        if (relatedConnection.supportsBatchedCursorClose()
-                && (executeFlag & EXEC_FLAG_HOLDABLE_RESULT) != 0) {
-            holdableCursorOpenMillis = System.currentTimeMillis();
-            relatedConnection.registerHoldableCursors();
-        } else {
-            holdableCursorOpenMillis = 0;
         }
 
         // cache reusable
