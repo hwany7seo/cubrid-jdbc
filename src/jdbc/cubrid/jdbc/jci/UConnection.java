@@ -1923,17 +1923,6 @@ public abstract class UConnection {
         return false;
     }
 
-    /*
-     * Deferred holdable-cursor close (PROTOCOL_V13+).
-     *
-     * Instead of a synchronous CURSOR_CLOSE round-trip per holdable
-     * ResultSet.close(), the statement is marked (UStatement.cursorClosePending)
-     * and the batch is flushed as one multi-id CAS_FC_CURSOR_CLOSE. flush iterates
-     * pooled_ustmts and closes only statements still pending and not closed, so a
-     * re-executed (live) cursor is never closed by a stale entry. Never called at
-     * commit (H1: holdable cursors survive commit). Enabled only when the broker
-     * understands V13; otherwise closeCursor sends immediately (fallback).
-     */
     public boolean supportsBatchedCursorClose() {
         return protoVersionIsAbove(PROTOCOL_V13);
     }
