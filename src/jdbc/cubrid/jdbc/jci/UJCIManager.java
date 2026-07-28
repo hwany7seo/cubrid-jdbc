@@ -42,12 +42,27 @@ package cubrid.jdbc.jci;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
+import java.lang.ref.WeakReference;
 
 public abstract class UJCIManager {
     // static Vector connectionList;
     static String sysCharsetName;
     static Hashtable<UUrlHostKey, UUrlCache> url_cache_table;
     static ArrayList<UUrlCache> url_cache_remove_list;
+
+    /* Connections that have (or had) a deferred cursor-close batch. The daemon
+     * scans these and flushes any batch that is stuck below DEFERRED_CURSOR_CLOSE_MAX
+     * past the TTL (item 3(a)). WeakReference so an abandoned/GC'd connection drops
+     * out on its own without being resurrected. */
+    static ArrayList<WeakReference<UConnection>> deferred_close_conn_list;
+
+    /* item 3(a): TTL after which a not-yet-full deferred cursor-close batch is
+     * flushed (24h prod, override to 3min for tests), and the scan cadence
+     * (60s prod, 30s test). System-property overridable. */
+    static final long DEFERRED_CLOSE_TTL_MILLIS =
+            Long.getLong("cubrid.deferred.cursor.close.ttl.millis", 86400000L);
+    static final long DEFERRED_CLOSE_SCAN_SEC =
+            Long.getLong("cubrid.deferred.cursor.close.scan.sec", 60L);
 
     static JdbcCacheWorker CACHE_Manager;
     static boolean result_cache_enable = true;
@@ -57,6 +72,7 @@ public abstract class UJCIManager {
         sysCharsetName = System.getProperty("file.encoding");
         url_cache_table = new Hashtable<UUrlHostKey, UUrlCache>(10);
         url_cache_remove_list = new ArrayList<UUrlCache>(10);
+        deferred_close_conn_list = new ArrayList<WeakReference<UConnection>>(10);
 
         try {
             CACHE_Manager = new JdbcCacheWorker();
@@ -108,6 +124,39 @@ public abstract class UJCIManager {
         return url_cache;
     }
 
+    /* Registered once, when a connection first defers a cursor close. */
+    static void registerDeferredCloseConn(UConnection c) {
+        if (c == null) return;
+        synchronized (deferred_close_conn_list) {
+            deferred_close_conn_list.add(new WeakReference<UConnection>(c));
+        }
+    }
+
+    /* Daemon sweep: flush any connection whose deferred cursor-close batch has
+     * waited past the TTL. Snapshot first so the connection-close I/O runs without
+     * holding the global list lock; dead WeakReferences are pruned afterwards. */
+    static void scanExpiredDeferredCloses() {
+        ArrayList<WeakReference<UConnection>> snapshot;
+        synchronized (deferred_close_conn_list) {
+            snapshot = new ArrayList<WeakReference<UConnection>>(deferred_close_conn_list);
+        }
+        for (int i = 0; i < snapshot.size(); i++) {
+            UConnection c = snapshot.get(i).get();
+            if (c == null) continue;
+            try {
+                c.flushExpiredDeferredCursorClose(DEFERRED_CLOSE_TTL_MILLIS);
+            } catch (Exception e) {
+            }
+        }
+        synchronized (deferred_close_conn_list) {
+            for (int i = deferred_close_conn_list.size() - 1; i >= 0; i--) {
+                if (deferred_close_conn_list.get(i).get() == null) {
+                    deferred_close_conn_list.remove(i);
+                }
+            }
+        }
+    }
+
     /*
      * delete the UConnection object from connection list
      *
@@ -119,6 +168,8 @@ public abstract class UJCIManager {
 }
 
 class JdbcCacheWorker extends Thread {
+    private long deferredCloseScanTick = 0;
+
     public void run() {
         while (true) {
             try {
@@ -130,6 +181,14 @@ class JdbcCacheWorker extends Thread {
                             uc.remove_expired_stmt(curTime);
                         }
                     }
+                }
+            } catch (Exception e) {
+            }
+
+            try {
+                if (++deferredCloseScanTick >= UJCIManager.DEFERRED_CLOSE_SCAN_SEC) {
+                    deferredCloseScanTick = 0;
+                    UJCIManager.scanExpiredDeferredCloses();
                 }
             } catch (Exception e) {
             }
