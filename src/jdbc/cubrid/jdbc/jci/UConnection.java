@@ -258,6 +258,13 @@ public abstract class UConnection {
     Vector<UStatement> pooled_ustmts;
     Vector<Integer> deferred_close_handle;
 
+    /* Phase 1 deferred holdable cursor close (JDBC-only; single-id flush, no max-N/V13 batch).
+     * rs.close marks a statement pending; re-execute drops it (supersede); the daemon flushes
+     * entries whose oldest pending has passed the TTL. */
+    private int deferredCursorCloseCount = 0;
+    private long deferredCloseFirstMillis = 0;
+    private boolean deferredCloseRegistered = false;
+
     private long beginTime;
 
     /* for result cache */
@@ -1793,6 +1800,116 @@ public abstract class UConnection {
         return info;
     }
 
+    /* ===== Phase 1: deferred holdable cursor close (JDBC-only) ===== */
+
+    void addDeferredCursorClose(UStatement stmt) {
+        if (stmt == null || stmt.cursorClosePending) {
+            return;
+        }
+        stmt.cursorClosePending = true;
+        if (deferredCursorCloseCount == 0) {
+            /* first pending → start TTL clock and register this connection for the daemon scan */
+            deferredCloseFirstMillis = System.currentTimeMillis();
+            if (!deferredCloseRegistered) {
+                deferredCloseRegistered = true;
+                UJCIManager.registerDeferredCloseConn(this);
+            }
+        }
+        deferredCursorCloseCount++;
+        /* Phase 1: no max-N immediate flush; supersede/stmt-close/conn-close/daemon handle it. */
+    }
+
+    void removeDeferredCursorClose(UStatement stmt) {
+        if (stmt == null || !stmt.cursorClosePending) {
+            return;
+        }
+        stmt.cursorClosePending = false;
+        if (deferredCursorCloseCount > 0) {
+            deferredCursorCloseCount--;
+        }
+        if (deferredCursorCloseCount == 0) {
+            deferredCloseFirstMillis = 0;
+        }
+    }
+
+    void clearDeferredCursorClose() {
+        if (pooled_ustmts != null) {
+            for (int i = 0; i < pooled_ustmts.size(); i++) {
+                UStatement s = pooled_ustmts.get(i);
+                if (s != null) {
+                    s.cursorClosePending = false;
+                }
+            }
+        }
+        deferredCursorCloseCount = 0;
+        deferredCloseFirstMillis = 0;
+    }
+
+    /* Send CURSOR_CLOSE for each pending (rs.close'd) holdable cursor. Single-id
+     * (one round-trip per statement) so it needs no server change and works on any
+     * broker. Synchronized on this connection so it serializes with the app's
+     * execute/fetch/close paths (same monitor) — no socket race. */
+    void flushDeferredCursorClose() {
+        synchronized (this) {
+            if (deferredCursorCloseCount <= 0 || pooled_ustmts == null) {
+                deferredCursorCloseCount = 0;
+                deferredCloseFirstMillis = 0;
+                return;
+            }
+            if (isConnectedToCubrid() == false) {
+                clearDeferredCursorClose();
+                return;
+            }
+            UFunctionCode code = UFunctionCode.CURSOR_CLOSE;
+            try {
+                for (int i = 0; i < pooled_ustmts.size(); i++) {
+                    UStatement s = pooled_ustmts.get(i);
+                    if (s != null && s.cursorClosePending && !s.isClosed()) {
+                        outBuffer.newRequest(code);
+                        outBuffer.addInt(s.getServerHandle());
+                        send_recv_msg();
+                        s.cursorClosePending = false;
+                    }
+                }
+            } catch (UJciException e) {
+                logException(e);
+            } catch (IOException e) {
+                logException(e);
+            } finally {
+                for (int i = 0; i < pooled_ustmts.size(); i++) {
+                    UStatement s = pooled_ustmts.get(i);
+                    if (s != null && s.cursorClosePending) {
+                        s.cursorClosePending = false;
+                    }
+                }
+                deferredCursorCloseCount = 0;
+                deferredCloseFirstMillis = 0;
+            }
+        }
+    }
+
+    /* Daemon entry: flush the pending set once its oldest entry has passed the TTL.
+     * Only pending (rs.close'd) cursors are ever touched — never a live/in-use cursor. */
+    void flushExpiredDeferredCursorClose(long ttlMillis) {
+        if (deferredCursorCloseCount <= 0 || isClosed || needReconnection) {
+            return;
+        }
+        synchronized (this) {
+            if (deferredCursorCloseCount <= 0
+                    || isClosed
+                    || needReconnection
+                    || client == null
+                    || isConnectedToCubrid() == false) {
+                return;
+            }
+            if (deferredCloseFirstMillis <= 0
+                    || (System.currentTimeMillis() - deferredCloseFirstMillis) < ttlMillis) {
+                return;
+            }
+            flushDeferredCursorClose();
+        }
+    }
+
     void clientSocketClose() {
         try {
             needReconnection = true;
@@ -1806,6 +1923,8 @@ public abstract class UConnection {
         }
         clearPooledUStatements();
         deferred_close_handle.clear();
+        deferredCursorCloseCount = 0;
+        deferredCloseFirstMillis = 0;
     }
 
     UInputBuffer send_recv_msg(boolean recv_result, int timeout) throws UJciException, IOException {
