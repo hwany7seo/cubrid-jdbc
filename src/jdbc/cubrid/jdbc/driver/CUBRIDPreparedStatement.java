@@ -101,7 +101,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
 
                     checkIsOpen();
                     if (!completed) {
-                        complete(false);
+                        complete();
                     }
                     checkIsOpen();
                     if ((!first_result_type)
@@ -479,7 +479,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
 
                     checkIsOpen();
                     if (!completed) {
-                        complete(false);
+                        complete();
                     }
                     checkIsOpen();
 
@@ -910,17 +910,13 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
     }
 
     void complete() throws SQLException {
-        complete(true);
-    }
-
-    void complete(boolean closeCursor) throws SQLException {
         if (completed) {
             return;
         }
         completed = true;
 
         if (current_result_set != null) {
-            current_result_set.close(closeCursor);
+            current_result_set.close();
             current_result_set = null;
         }
 

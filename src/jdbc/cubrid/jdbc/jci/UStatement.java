@@ -88,6 +88,9 @@ public class UStatement {
 
     private UConnection relatedConnection;
     private boolean isClosed;
+    /* Phase 1: holdable cursor closed by the app (rs.close) whose server CURSOR_CLOSE
+     * is deferred; dropped on re-execute (supersede) or flushed by the daemon (TTL). */
+    boolean cursorClosePending = false;
     private boolean realFetched;
     private boolean isUpdatable;
     private boolean isSensitive;
@@ -588,6 +591,8 @@ public class UStatement {
             return;
         }
         relatedConnection.pooled_ustmts.remove(this);
+        /* handle being freed → drop any deferred cursor close (CLOSE_USTATEMENT frees the cursor) */
+        relatedConnection.removeDeferredCursorClose(this);
         currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
         isClosed = true;
         if (stmt_cache != null) {
@@ -667,19 +672,10 @@ public class UStatement {
         if (relatedConnection.isConnectedToCubrid() == false) {
             return;
         }
-
-        try {
-            UFunctionCode code = UFunctionCode.CURSOR_CLOSE;
-            outBuffer.newRequest(code);
-            outBuffer.addInt(serverHandler);
-            relatedConnection.send_recv_msg();
-        } catch (UJciException e) {
-            relatedConnection.logException(e);
-            e.toUError(errorHandler);
-        } catch (IOException e) {
-            relatedConnection.logException(e);
-            errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
-        }
+        /* Phase 1: defer instead of sending CURSOR_CLOSE now. A subsequent re-execute
+         * of this handle supersedes it (dropped, no send); an abandoned deferred close
+         * is flushed by the daemon after the TTL, and stmt/conn close frees it too. */
+        relatedConnection.addDeferredCursorClose(this);
     }
 
     public synchronized void deleteCursor(int cursor) {
@@ -850,6 +846,10 @@ public class UStatement {
         UInputBuffer inBuffer = null;
         errorHandler.clear();
         relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
+
+        /* re-executing this handle supersedes any deferred cursor close for it
+         * (server ux_execute -> hm_qresult_end frees the previous result). */
+        relatedConnection.removeDeferredCursorClose(this);
 
         synchronized (relatedConnection) {
             writeExecuteRequest(maxField, isScrollable, queryTimeout, cacheData);
@@ -1059,6 +1059,8 @@ public class UStatement {
         UInputBuffer inBuffer = null;
         errorHandler.clear();
         relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
+
+        relatedConnection.removeDeferredCursorClose(this);
 
         synchronized (relatedConnection) {
             writeExecuteBatchRequest(queryTimeout);

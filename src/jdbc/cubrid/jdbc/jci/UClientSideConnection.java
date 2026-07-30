@@ -326,6 +326,12 @@ public class UClientSideConnection extends UConnection {
                             throw new Exception("Check It Out!");
                         }
                     }
+                    if (type == false) {
+                        /* rollback aborts the transaction and frees all results on the server;
+                         * discard the deferred cursor-close tracking (no CURSOR_CLOSE needed).
+                         * commit does nothing here — holdable cursors survive commit (H1). */
+                        clearDeferredCursorClose();
+                    }
                     outBuffer.newRequest(output, UFunctionCode.END_TRANSACTION);
                     outBuffer.addByte((type == true) ? END_TRAN_COMMIT : END_TRAN_ROLLBACK);
 
