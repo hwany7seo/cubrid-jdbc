@@ -592,7 +592,7 @@ public class UStatement {
             return;
         }
         relatedConnection.pooled_ustmts.remove(this);
-        /* statement (handle) being freed → drop any deferred cursor close for it */
+        /* statement (handle) being freed �넂 drop any deferred cursor close for it */
         relatedConnection.removeDeferredCursorClose(this);
         holdableCursorOpenMillis = 0;
         currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
@@ -676,8 +676,6 @@ public class UStatement {
         }
 
         if (relatedConnection.supportsBatchedCursorClose()) {
-            /* PROTOCOL_V13+: defer & batch (H2). Freed by re-execute supersede,
-             * batch max, or connection close — never at commit (H1). */
             relatedConnection.addDeferredCursorClose(this);
             return;
         }
@@ -886,6 +884,14 @@ public class UStatement {
             inBuffer = relatedConnection.send_recv_msg();
         }
 
+        if (relatedConnection.supportsBatchedCursorClose()
+                && (executeFlag & EXEC_FLAG_HOLDABLE_RESULT) != 0) {
+            holdableCursorOpenMillis = System.currentTimeMillis();
+            relatedConnection.registerHoldableCursors();
+        } else {
+            holdableCursorOpenMillis = 0;
+        }
+
         // cache reusable
         byte cache_reusable = inBuffer.readByte();
         if (cacheData != null && cache_reusable == (byte) 1) {
@@ -911,12 +917,6 @@ public class UStatement {
                 relatedConnection.update_executed = true;
                 break;
             }
-        }
-
-        if (relatedConnection.supportsBatchedCursorClose()
-                && (executeFlag & EXEC_FLAG_HOLDABLE_RESULT) != 0) {
-            holdableCursorOpenMillis = System.currentTimeMillis();
-            relatedConnection.registerHoldableCursors();
         }
     }
 

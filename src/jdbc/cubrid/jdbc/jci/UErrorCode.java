@@ -112,6 +112,7 @@ public abstract class UErrorCode {
     public static final int CAS_ER_MAX_CLIENT_EXCEEDED = -10101;
     public static final int CAS_ER_INVALID_CURSOR_POS = -10102;
     public static final int CAS_ER_SSL_TYPE_NOT_ALLOWED = -10103;
+    public static final int CAS_ER_NOT_SUPPORT_CLIENT = -10104;
     public static final int CAS_ER_IS = -10200;
 
     public static final int CAS_ERROR_INDICATOR = -1;
@@ -225,6 +226,9 @@ public abstract class UErrorCode {
         CASMessageString.put(
                 new Integer(CAS_ER_SSL_TYPE_NOT_ALLOWED),
                 "The requested SSL mode is not permitted, the CAS server is running in a different mode (check useSSL property).");
+        CASMessageString.put(
+                new Integer(CAS_ER_NOT_SUPPORT_CLIENT),
+                "The JDBC version is not supported by the server. Please use JDBC version 12.0.0 or higher.");
         CASMessageString.put(new Integer(CAS_ER_IS), "Authentication failure");
     }
 }

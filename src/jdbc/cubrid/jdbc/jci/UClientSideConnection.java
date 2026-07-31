@@ -327,12 +327,10 @@ public class UClientSideConnection extends UConnection {
                         }
                     }
                     if (type == false) {
-                        /* rollback: server releases all results → drop pending
-                         * holdable cursor closes without sending. */
                         clearDeferredCursorClose();
                     }
                     /* commit: HOLD_CURSORS_OVER_COMMIT cursors must survive the
-                     * commit → do NOT close them here (H1). */
+                     * commit �넂 do NOT close them here (H1). */
                     outBuffer.newRequest(output, UFunctionCode.END_TRANSACTION);
                     outBuffer.addByte((type == true) ? END_TRAN_COMMIT : END_TRAN_ROLLBACK);
 
