@@ -48,6 +48,7 @@ import java.sql.Ref;
 import java.sql.ResultSet;
 import java.sql.RowId;
 import java.sql.SQLException;
+import java.sql.SQLType;
 import java.sql.SQLXML;
 import java.sql.Statement;
 import java.sql.Time;
@@ -822,5 +823,31 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements 
     /* JDK 1.7 */
     public <T> T getObject(String parameterName, Class<T> type) throws SQLException {
         throw CUBRIDException.notSupported();
+    }
+
+    // ------------------------- JDBC 4.2 -----------------------------------
+
+    @Override
+    public void registerOutParameter(int parameterIndex, SQLType sqlType) throws SQLException {
+        registerOutParameter(parameterIndex, checkSqlType(sqlType));
+    }
+
+    /* As with the int-based overload, scale is ignored. */
+    @Override
+    public void registerOutParameter(int parameterIndex, SQLType sqlType, int scale)
+            throws SQLException {
+        registerOutParameter(parameterIndex, checkSqlType(sqlType), scale);
+    }
+
+    /*
+     * As with the int-based overload, typeName is ignored: the JDBC spec allows a
+     * driver that does not need the type name information to ignore it, and it
+     * applies only to user-defined (STRUCT/DISTINCT/JAVA_OBJECT) and REF
+     * parameters, which CUBRID does not support.
+     */
+    @Override
+    public void registerOutParameter(int parameterIndex, SQLType sqlType, String typeName)
+            throws SQLException {
+        registerOutParameter(parameterIndex, checkSqlType(sqlType), typeName);
     }
 }

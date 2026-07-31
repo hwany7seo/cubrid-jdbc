@@ -58,6 +58,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.RowId;
 import java.sql.SQLException;
+import java.sql.SQLType;
 import java.sql.SQLXML;
 import java.sql.Statement;
 import java.sql.Time;
@@ -1039,5 +1040,35 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements Prepared
     /* JDK 1.6 */
     public void setSQLXML(int parameterIndex, SQLXML xmlObject) throws SQLException {
         throw CUBRIDException.notSupported();
+    }
+
+    // ------------------------- JDBC 4.2 -----------------------------------
+
+    protected int checkSqlType(SQLType targetSqlType) throws SQLException {
+        if (targetSqlType == null) {
+            throw con.createCUBRIDException(
+                    CUBRIDJDBCErrorCode.invalid_value, " - targetSqlType is null", null);
+        }
+        Integer vendorTypeNumber = targetSqlType.getVendorTypeNumber();
+        if (vendorTypeNumber == null) {
+            throw con.createCUBRIDException(
+                    CUBRIDJDBCErrorCode.invalid_value,
+                    " - targetSqlType has no vendor type number: " + targetSqlType.getName(),
+                    null);
+        }
+        return vendorTypeNumber;
+    }
+
+    @Override
+    public synchronized void setObject(int parameterIndex, Object x, SQLType targetSqlType)
+            throws SQLException {
+        setObject(parameterIndex, x, checkSqlType(targetSqlType));
+    }
+
+    @Override
+    public synchronized void setObject(
+            int parameterIndex, Object x, SQLType targetSqlType, int scaleOrLength)
+            throws SQLException {
+        setObject(parameterIndex, x, checkSqlType(targetSqlType), scaleOrLength);
     }
 }
