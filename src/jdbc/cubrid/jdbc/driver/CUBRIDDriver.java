@@ -62,7 +62,7 @@ import java.util.regex.Pattern;
  */
 public class CUBRIDDriver implements Driver {
     // version
-    public static final String version_string = "@JDBC_DRIVER_VERSION_STRING@";
+    public static final String version_string = "15.0.0.0001";
     public static final int major_version;
     public static final int minor_version;
     public static final int patch_version;

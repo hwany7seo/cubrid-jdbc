@@ -42,20 +42,21 @@ package cubrid.jdbc.jci;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
+import java.lang.ref.WeakReference;
 
 public abstract class UJCIManager {
     // static Vector connectionList;
     static String sysCharsetName;
     static Hashtable<UUrlHostKey, UUrlCache> url_cache_table;
     static ArrayList<UUrlCache> url_cache_remove_list;
-    static ArrayList<java.lang.ref.WeakReference<UConnection>> holdable_conn_list;
+    static ArrayList<WeakReference<UConnection>> holdable_conn_list;
 
     // static final long HOLDABLE_CURSOR_TTL_MILLIS =
     //         Long.getLong("cubrid.holdable.cursor.ttl.millis", 86400000L);
     static final long HOLDABLE_CURSOR_TTL_MILLIS =
-            Long.getLong("cubrid.holdable.cursor.ttl.millis", 180000L);
+            Long.getLong("cubrid.holdable.cursor.ttl.millis", 40000L);
     static final long HOLDABLE_CURSOR_SCAN_TICKS =
-            Long.getLong("cubrid.holdable.cursor.scan.sec", 30L);
+            Long.getLong("cubrid.holdable.cursor.scan.sec", 5L);
 
     static JdbcCacheWorker CACHE_Manager;
     static boolean result_cache_enable = true;
@@ -65,7 +66,7 @@ public abstract class UJCIManager {
         sysCharsetName = System.getProperty("file.encoding");
         url_cache_table = new Hashtable<UUrlHostKey, UUrlCache>(10);
         url_cache_remove_list = new ArrayList<UUrlCache>(10);
-        holdable_conn_list = new ArrayList<java.lang.ref.WeakReference<UConnection>>(10);
+        holdable_conn_list = new ArrayList<WeakReference<UConnection>>(10);
 
         try {
             CACHE_Manager = new JdbcCacheWorker();
@@ -120,14 +121,14 @@ public abstract class UJCIManager {
     static void registerHoldableConn(UConnection c) {
         if (c == null) return;
         synchronized (holdable_conn_list) {
-            holdable_conn_list.add(new java.lang.ref.WeakReference<UConnection>(c));
+            holdable_conn_list.add(new WeakReference<UConnection>(c));
         }
     }
 
     static void scanExpiredHoldableCursors() {
-        ArrayList<java.lang.ref.WeakReference<UConnection>> snapshot;
+        ArrayList<WeakReference<UConnection>> snapshot;
         synchronized (holdable_conn_list) {
-            snapshot = new ArrayList<java.lang.ref.WeakReference<UConnection>>(holdable_conn_list);
+            snapshot = new ArrayList<WeakReference<UConnection>>(holdable_conn_list);
         }
         for (int i = 0; i < snapshot.size(); i++) {
             UConnection c = snapshot.get(i).get();
