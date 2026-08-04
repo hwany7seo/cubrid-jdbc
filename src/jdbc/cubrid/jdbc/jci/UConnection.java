@@ -1850,8 +1850,13 @@ public abstract class UConnection {
         return url_cache;
     }
 
-    public int brokerInfoVersion() {
+    public int brokerProtocolVersion() {
         return protocolVersion;
+    }
+
+    @Deprecated
+    public boolean protoVersionIsAbove(int ver) {
+        return protocolVersion >= ver;
     }
 
     protected void checkReconnect() throws IOException, UJciException {
@@ -1859,7 +1864,7 @@ public abstract class UConnection {
             dbInfo = createDBInfo(dbname, user, passwd, url);
         }
         // set the session id
-        if (brokerInfoVersion() == 0) {
+        if (brokerProtocolVersion() == 0) {
             /* No broker information is provided at the time of initial connection,
              * so a null session id is delivered.
              */

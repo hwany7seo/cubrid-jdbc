@@ -308,7 +308,7 @@ public class UStatement {
         UInputBuffer inBuffer;
         synchronized (u_con) {
             outBuffer.newRequest(UFunctionCode.MAKE_OUT_RS);
-            if (u_con.brokerInfoVersion() < UConnection.PROTOCOL_V11) {
+            if (u_con.brokerProtocolVersion() < UConnection.PROTOCOL_V11) {
                 outBuffer.addInt((int) id);
             } else {
                 outBuffer.addLong(id);
@@ -2268,7 +2268,7 @@ public class UStatement {
             case UUType.U_TYPE_VARBIT:
                 return inBuffer.readBytes(dataSize);
             case UUType.U_TYPE_RESULTSET:
-                if (relatedConnection.brokerInfoVersion() < UConnection.PROTOCOL_V11) {
+                if (relatedConnection.brokerProtocolVersion() < UConnection.PROTOCOL_V11) {
                     return new CUBRIDOutResultSet(relatedConnection, (long) inBuffer.readInt());
                 } else {
                     return new CUBRIDOutResultSet(relatedConnection, inBuffer.readLong());
