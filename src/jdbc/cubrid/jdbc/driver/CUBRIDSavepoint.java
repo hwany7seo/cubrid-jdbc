@@ -31,56 +31,59 @@
 
 package cubrid.jdbc.driver;
 
-import cubrid.jdbc.jci.UError;
 import java.sql.SQLException;
-import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Savepoint;
 
-public class CUBRIDException extends SQLException {
-    private static final long serialVersionUID = -1902040094322313271L;
+public class CUBRIDSavepoint implements Savepoint {
+    /* names of unnamed savepoints are generated from this prefix; user names must not use it */
+    static final String UNNAMED_SAVEPOINT_PREFIX = "CUBRID_JDBC_SAVEPOINT_";
 
-    protected CUBRIDException(String msg, int errCode) {
-        super(msg, null, errCode);
+    private final CUBRIDConnection con;
+    private final boolean isNamed;
+    private final int id;
+    private final String name;
+
+    CUBRIDSavepoint(CUBRIDConnection con, int id) {
+        this.con = con;
+        this.isNamed = false;
+        this.id = id;
+        this.name = UNNAMED_SAVEPOINT_PREFIX + id;
     }
 
-    public CUBRIDException(UError error) {
-        this(error.getErrorMsg(true), error.getJdbcErrorCode());
-        error.changeStackTrace(this);
+    CUBRIDSavepoint(CUBRIDConnection con, String name) {
+        this.con = con;
+        this.isNamed = true;
+        this.id = 0;
+        this.name = name;
     }
 
-    public CUBRIDException(UError error, Throwable t) {
-        this(error.getErrorMsg(true), error.getJdbcErrorCode());
-        if (t != null) {
-            setStackTrace(t.getStackTrace());
+    @Override
+    public int getSavepointId() throws SQLException {
+        if (isNamed) {
+            throw new CUBRIDException(
+                    CUBRIDJDBCErrorCode.invalid_savepoint,
+                    "cannot retrieve the id of a named savepoint",
+                    null);
         }
+        return id;
     }
 
-    public CUBRIDException(int errCode, Throwable t) {
-        this(CUBRIDJDBCErrorCode.getMessage(errCode), errCode);
-        if (t != null) {
-            setStackTrace(t.getStackTrace());
+    @Override
+    public String getSavepointName() throws SQLException {
+        if (!isNamed) {
+            throw new CUBRIDException(
+                    CUBRIDJDBCErrorCode.invalid_savepoint,
+                    "cannot retrieve the name of an unnamed savepoint",
+                    null);
         }
+        return name;
     }
 
-    public CUBRIDException(int errCode) {
-        this(CUBRIDJDBCErrorCode.getMessage(errCode), errCode);
+    String getInternalName() {
+        return name;
     }
 
-    public CUBRIDException(int errCode, String msg, Throwable t) {
-        this(CUBRIDJDBCErrorCode.getMessage(errCode) + msg, errCode);
-        if (t != null) {
-            setStackTrace(t.getStackTrace());
-        }
-    }
-
-    /*
-     * Builds the standard exception for a JDBC method that this driver does not support.
-     * Uses the JDBC 4.0 standard type (SQLFeatureNotSupportedException) while carrying
-     * the driver's own reason message and error code (not_supported).
-     */
-    static SQLFeatureNotSupportedException notSupported() {
-        return new SQLFeatureNotSupportedException(
-                CUBRIDJDBCErrorCode.getMessage(CUBRIDJDBCErrorCode.not_supported),
-                null,
-                CUBRIDJDBCErrorCode.not_supported);
+    boolean isOwnedBy(CUBRIDConnection c) {
+        return con == c;
     }
 }
