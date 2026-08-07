@@ -172,11 +172,6 @@ public abstract class UConnection {
     protected static final int BROKER_INFO_SYSTEM_PARAM = 6;
     protected static final int BROKER_INFO_RESERVED3 = 7;
 
-    /* For backward compatibility */
-    protected static final int BROKER_INFO_MAJOR_VERSION = BROKER_INFO_PROTO_VERSION;
-    protected static final int BROKER_INFO_MINOR_VERSION = BROKER_INFO_FUNCTION_FLAG;
-    protected static final int BROKER_INFO_PATCH_VERSION = BROKER_INFO_SYSTEM_PARAM;
-
     public static final String ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL = "convertToNull";
     public static final String ZERO_DATETIME_BEHAVIOR_EXCEPTION = "exception";
     public static final String ZERO_DATETIME_BEHAVIOR_ROUND = "round";
@@ -235,8 +230,7 @@ public abstract class UConnection {
 
     protected byte[] brokerInfo = null;
     protected byte[] casInfo = null;
-    protected int brokerVersion = 0;
-    protected static int protocolVersion = 0;
+    protected int protocolVersion = 0;
 
     public String casIp = "";
     public int casPort;
@@ -1392,7 +1386,7 @@ public abstract class UConnection {
     }
 
     void cancel() throws UJciException, IOException {
-        BrokerHandler.cancelBrokerEx(casIp, casPort, casProcessId, READ_TIMEOUT);
+        BrokerHandler.cancelBroker(casIp, casPort, casProcessId, READ_TIMEOUT);
     }
 
     /*
@@ -1691,10 +1685,6 @@ public abstract class UConnection {
     }
 
     public boolean brokerInfoRenewedErrorCode() {
-        if ((brokerInfo[BROKER_INFO_PROTO_VERSION] & CAS_PROTO_INDICATOR) != CAS_PROTO_INDICATOR) {
-            return false;
-        }
-
         return (brokerInfo[BROKER_INFO_FUNCTION_FLAG] & CAS_RENEWED_ERROR_CODE)
                 == CAS_RENEWED_ERROR_CODE;
     }
@@ -1722,7 +1712,7 @@ public abstract class UConnection {
     }
 
     public boolean isOracleCompatNumberBehavior() {
-        if (protoVersionIsAbove(PROTOCOL_V12)) {
+        if (protocolVersion >= PROTOCOL_V12) {
             if (brokerInfo == null) return false;
             return (brokerInfo[BROKER_INFO_SYSTEM_PARAM] & CAS_ORACLE_COMPAT_NUMBER_BEHAVIOR)
                     == CAS_ORACLE_COMPAT_NUMBER_BEHAVIOR;
@@ -1884,52 +1874,13 @@ public abstract class UConnection {
         return url_cache;
     }
 
-    protected int makeBrokerVersion(int major, int minor, int patch) {
-        int version = 0;
-        if ((major < 0 || major > Byte.MAX_VALUE)
-                || (minor < 0 || minor > Byte.MAX_VALUE)
-                || (patch < 0 || patch > Byte.MAX_VALUE)) {
-            return 0;
-        }
-
-        version = ((int) major << 24) | ((int) minor << 16) | ((int) patch << 8);
-        return version;
+    public int brokerProtocolVersion() {
+        return protocolVersion;
     }
 
-    protected int makeProtoVersion(int ver) {
-        return ((int) CAS_PROTO_INDICATOR << 24) | ver;
-    }
-
-    public int brokerInfoVersion() {
-        return brokerVersion;
-    }
-
-    public boolean protoVersionIsSame(int ver) {
-        if (brokerInfoVersion() == makeProtoVersion(ver)) {
-            return true;
-        }
-        return false;
-    }
-
-    public boolean protoVersionIsUnder(int ver) {
-        if (brokerInfoVersion() < makeProtoVersion(ver)) {
-            return true;
-        }
-        return false;
-    }
-
+    @Deprecated
     public boolean protoVersionIsAbove(int ver) {
-        if (brokerInfoVersion() >= makeProtoVersion(ver)) {
-            return true;
-        }
-        return false;
-    }
-
-    public static boolean protoVersionIsLower(int ver) {
-        if (protocolVersion < ver) {
-            return true;
-        }
-        return false;
+        return protocolVersion >= ver;
     }
 
     protected void checkReconnect() throws IOException, UJciException {
@@ -1937,7 +1888,7 @@ public abstract class UConnection {
             dbInfo = createDBInfo(dbname, user, passwd, url);
         }
         // set the session id
-        if (brokerInfoVersion() == 0) {
+        if (brokerProtocolVersion() == 0) {
             /* No broker information is provided at the time of initial connection,
              * so a null session id is delivered.
              */

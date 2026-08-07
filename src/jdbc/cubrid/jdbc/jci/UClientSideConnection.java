@@ -423,20 +423,10 @@ public class UClientSideConnection extends UConnection {
 
         /* synchronize with broker_info */
         byte version = brokerInfo[BROKER_INFO_PROTO_VERSION];
-        if ((version & CAS_PROTO_INDICATOR) == CAS_PROTO_INDICATOR) {
-            brokerVersion = makeProtoVersion(version & CAS_PROTO_VER_MASK);
-        } else {
-            brokerVersion =
-                    makeBrokerVersion(
-                            (int) brokerInfo[BROKER_INFO_MAJOR_VERSION],
-                            (int) brokerInfo[BROKER_INFO_MINOR_VERSION],
-                            (int) brokerInfo[BROKER_INFO_PATCH_VERSION]);
-        }
-
         protocolVersion = (int) version & CAS_PROTO_VER_MASK;
 
-        /* The driver only supports servers using PROTOCOL_V9 or later. */
-        if (protoVersionIsUnder(PROTOCOL_V9)) {
+        /* The driver only supports servers using PROTOCOL_V8 or later. */
+        if (protocolVersion < PROTOCOL_V8) {
             throw new UJciException(UErrorCode.ER_NOT_SUPPORTED_PROTOCOL);
         }
 
