@@ -172,11 +172,6 @@ public abstract class UConnection {
     protected static final int BROKER_INFO_SYSTEM_PARAM = 6;
     protected static final int BROKER_INFO_RESERVED3 = 7;
 
-    /* For backward compatibility */
-    protected static final int BROKER_INFO_MAJOR_VERSION = BROKER_INFO_PROTO_VERSION;
-    protected static final int BROKER_INFO_MINOR_VERSION = BROKER_INFO_FUNCTION_FLAG;
-    protected static final int BROKER_INFO_PATCH_VERSION = BROKER_INFO_SYSTEM_PARAM;
-
     public static final String ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL = "convertToNull";
     public static final String ZERO_DATETIME_BEHAVIOR_EXCEPTION = "exception";
     public static final String ZERO_DATETIME_BEHAVIOR_ROUND = "round";
@@ -235,8 +230,7 @@ public abstract class UConnection {
 
     protected byte[] brokerInfo = null;
     protected byte[] casInfo = null;
-    protected int brokerVersion = 0;
-    protected static int protocolVersion = 0;
+    protected int protocolVersion = 0;
 
     public String casIp = "";
     public int casPort;
@@ -260,7 +254,6 @@ public abstract class UConnection {
     protected String url = null;
 
     protected byte sessionId[] = createNullSession();
-    protected int oldSessionId = 0;
 
     boolean skip_checkcas = false;
     Vector<UStatement> pooled_ustmts;
@@ -342,7 +335,6 @@ public abstract class UConnection {
             outBuffer.newRequest(output, UFunctionCode.END_SESSION);
             send_recv_msg();
             sessionId = createNullSession();
-            oldSessionId = 0;
         } catch (Exception e) {
         }
     }
@@ -528,9 +520,7 @@ public abstract class UConnection {
             else outBuffer.addStringWithNull(arg2);
             outBuffer.addByte(flag);
 
-            if (protoVersionIsAbove(PROTOCOL_V5)) {
-                outBuffer.addInt(shard_id);
-            }
+            outBuffer.addInt(shard_id);
 
             UInputBuffer inBuffer;
             inBuffer = send_recv_msg();
@@ -573,13 +563,11 @@ public abstract class UConnection {
 
             outBuffer.newRequest(output, UFunctionCode.EXECUTE_BATCH_STATEMENT);
             outBuffer.addByte(getAutoCommit() ? (byte) 1 : (byte) 0);
-            if (protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
-                long remainingTime = getRemainingTime(queryTimeout * 1000);
-                if (queryTimeout > 0 && remainingTime <= 0) {
-                    throw createJciException(UErrorCode.ER_TIMEOUT);
-                }
-                outBuffer.addInt((int) remainingTime);
+            long remainingTime = getRemainingTime(queryTimeout * 1000);
+            if (queryTimeout > 0 && remainingTime <= 0) {
+                throw createJciException(UErrorCode.ER_TIMEOUT);
             }
+            outBuffer.addInt((int) remainingTime);
 
             for (int i = 0; i < batchSqlStmt.length; i++) {
                 if (batchSqlStmt[i] != null) outBuffer.addStringWithNull(batchSqlStmt[i]);
@@ -609,9 +597,7 @@ public abstract class UConnection {
                 }
             }
 
-            if (protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
-                setShardId(inBuffer.readInt());
-            }
+            setShardId(inBuffer.readInt());
 
             update_executed = true;
             return batchResult;
@@ -1384,9 +1370,6 @@ public abstract class UConnection {
      * requests via broker handler
      */
     public boolean isValid(int timeout) throws SQLException {
-        if (protoVersionIsUnder(PROTOCOL_V9)) {
-            return !isClosed;
-        }
         try {
             byte[] session = new byte[4];
             for (int i = 0; i < 4; i++) session[i] = sessionId[i + 8];
@@ -1403,11 +1386,7 @@ public abstract class UConnection {
     }
 
     void cancel() throws UJciException, IOException {
-        if (protoVersionIsAbove(PROTOCOL_V4)) {
-            BrokerHandler.cancelBrokerEx(casIp, casPort, casProcessId, READ_TIMEOUT);
-        } else {
-            BrokerHandler.cancelBroker(casIp, casPort, casProcessId, READ_TIMEOUT);
-        }
+        BrokerHandler.cancelBroker(casIp, casPort, casProcessId, READ_TIMEOUT);
     }
 
     /*
@@ -1706,10 +1685,6 @@ public abstract class UConnection {
     }
 
     public boolean brokerInfoRenewedErrorCode() {
-        if ((brokerInfo[BROKER_INFO_PROTO_VERSION] & CAS_PROTO_INDICATOR) != CAS_PROTO_INDICATOR) {
-            return false;
-        }
-
         return (brokerInfo[BROKER_INFO_FUNCTION_FLAG] & CAS_RENEWED_ERROR_CODE)
                 == CAS_RENEWED_ERROR_CODE;
     }
@@ -1729,7 +1704,7 @@ public abstract class UConnection {
     }
 
     public boolean supportHoldableResult() {
-        if (brokerInfoSupportHoldableResult() || protoVersionIsSame(UConnection.PROTOCOL_V2)) {
+        if (brokerInfoSupportHoldableResult()) {
             return true;
         }
 
@@ -1737,7 +1712,7 @@ public abstract class UConnection {
     }
 
     public boolean isOracleCompatNumberBehavior() {
-        if (protoVersionIsAbove(PROTOCOL_V12)) {
+        if (protocolVersion >= PROTOCOL_V12) {
             if (brokerInfo == null) return false;
             return (brokerInfo[BROKER_INFO_SYSTEM_PARAM] & CAS_ORACLE_COMPAT_NUMBER_BEHAVIOR)
                     == CAS_ORACLE_COMPAT_NUMBER_BEHAVIOR;
@@ -1899,52 +1874,13 @@ public abstract class UConnection {
         return url_cache;
     }
 
-    protected int makeBrokerVersion(int major, int minor, int patch) {
-        int version = 0;
-        if ((major < 0 || major > Byte.MAX_VALUE)
-                || (minor < 0 || minor > Byte.MAX_VALUE)
-                || (patch < 0 || patch > Byte.MAX_VALUE)) {
-            return 0;
-        }
-
-        version = ((int) major << 24) | ((int) minor << 16) | ((int) patch << 8);
-        return version;
+    public int brokerProtocolVersion() {
+        return protocolVersion;
     }
 
-    protected int makeProtoVersion(int ver) {
-        return ((int) CAS_PROTO_INDICATOR << 24) | ver;
-    }
-
-    public int brokerInfoVersion() {
-        return brokerVersion;
-    }
-
-    public boolean protoVersionIsSame(int ver) {
-        if (brokerInfoVersion() == makeProtoVersion(ver)) {
-            return true;
-        }
-        return false;
-    }
-
-    public boolean protoVersionIsUnder(int ver) {
-        if (brokerInfoVersion() < makeProtoVersion(ver)) {
-            return true;
-        }
-        return false;
-    }
-
+    @Deprecated
     public boolean protoVersionIsAbove(int ver) {
-        if (brokerInfoVersion() >= makeProtoVersion(ver)) {
-            return true;
-        }
-        return false;
-    }
-
-    public static boolean protoVersionIsLower(int ver) {
-        if (protocolVersion < ver) {
-            return true;
-        }
-        return false;
+        return protocolVersion >= ver;
     }
 
     protected void checkReconnect() throws IOException, UJciException {
@@ -1952,18 +1888,14 @@ public abstract class UConnection {
             dbInfo = createDBInfo(dbname, user, passwd, url);
         }
         // set the session id
-        if (brokerInfoVersion() == 0) {
-            /* Interpretable session information supporting version
-             *   later than PROTOCOL_V3 as well as version earlier
-             *   than PROTOCOL_V3 should be delivered since no broker information
-             *   is provided at the time of initial connection.
+        if (brokerProtocolVersion() == 0) {
+            /* No broker information is provided at the time of initial connection,
+             * so a null session id is delivered.
              */
             String id = "0";
             UJCIUtil.copy_bytes(dbInfo, 608, 20, id);
-        } else if (protoVersionIsAbove(PROTOCOL_V3)) {
-            System.arraycopy(sessionId, 0, dbInfo, 608, 20);
         } else {
-            UJCIUtil.copy_bytes(dbInfo, 608, 20, new Integer(oldSessionId).toString());
+            System.arraycopy(sessionId, 0, dbInfo, 608, 20);
         }
 
         if (outBuffer == null) {

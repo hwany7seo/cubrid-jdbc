@@ -300,53 +300,22 @@ public class CUBRIDConnection implements Connection {
         commit();
 
         int cubrid_level;
-        if (u_con.protoVersionIsAbove(UConnection.PROTOCOL_V7)) {
-            switch (level) {
-                case TRANSACTION_READ_COMMITTED:
-                case TRAN_REP_CLASS_COMMIT_INSTANCE:
-                    cubrid_level = CUBRIDIsolationLevel.TRAN_READ_COMMITTED;
-                    break;
+        switch (level) {
+            case TRANSACTION_READ_COMMITTED:
+            case TRAN_REP_CLASS_COMMIT_INSTANCE:
+                cubrid_level = CUBRIDIsolationLevel.TRAN_READ_COMMITTED;
+                break;
 
-                case TRANSACTION_REPEATABLE_READ:
-                    cubrid_level = CUBRIDIsolationLevel.TRAN_REPEATABLE_READ;
-                    break;
+            case TRANSACTION_REPEATABLE_READ:
+                cubrid_level = CUBRIDIsolationLevel.TRAN_REPEATABLE_READ;
+                break;
 
-                case TRANSACTION_SERIALIZABLE:
-                    cubrid_level = CUBRIDIsolationLevel.TRAN_SERIALIZABLE;
-                    break;
+            case TRANSACTION_SERIALIZABLE:
+                cubrid_level = CUBRIDIsolationLevel.TRAN_SERIALIZABLE;
+                break;
 
-                default:
-                    throw createCUBRIDException(CUBRIDJDBCErrorCode.invalid_trans_iso_level, null);
-            }
-        } else {
-            switch (level) {
-                case TRANSACTION_READ_COMMITTED:
-                    cubrid_level = CUBRIDIsolationLevel.TRAN_READ_COMMITTED;
-                    break;
-
-                case TRANSACTION_READ_UNCOMMITTED:
-                    cubrid_level = CUBRIDIsolationLevel.TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
-                    break;
-
-                case TRANSACTION_REPEATABLE_READ:
-                    cubrid_level = CUBRIDIsolationLevel.TRAN_REPEATABLE_READ;
-                    break;
-
-                case TRANSACTION_SERIALIZABLE:
-                    cubrid_level = CUBRIDIsolationLevel.TRAN_SERIALIZABLE;
-                    break;
-
-                case TRAN_REP_CLASS_COMMIT_INSTANCE:
-                    cubrid_level = CUBRIDIsolationLevel.TRAN_READ_COMMITTED;
-                    break;
-
-                case TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-                    cubrid_level = CUBRIDIsolationLevel.TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
-                    break;
-
-                default:
-                    throw createCUBRIDException(CUBRIDJDBCErrorCode.invalid_trans_iso_level, null);
-            }
+            default:
+                throw createCUBRIDException(CUBRIDJDBCErrorCode.invalid_trans_iso_level, null);
         }
 
         synchronized (u_con) {
@@ -378,44 +347,18 @@ public class CUBRIDConnection implements Connection {
                 throw createCUBRIDException(error);
         }
 
-        if (u_con.protoVersionIsAbove(UConnection.PROTOCOL_V7)) {
-            switch (cubrid_level) {
-                case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
-                    return TRANSACTION_READ_COMMITTED;
+        switch (cubrid_level) {
+            case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
+                return TRANSACTION_READ_COMMITTED;
 
-                case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
-                    return TRANSACTION_REPEATABLE_READ;
+            case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
+                return TRANSACTION_REPEATABLE_READ;
 
-                case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
-                    return TRANSACTION_SERIALIZABLE;
+            case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
+                return TRANSACTION_SERIALIZABLE;
 
-                default:
-                    return TRANSACTION_NONE;
-            }
-
-        } else {
-            switch (cubrid_level) {
-                case CUBRIDIsolationLevel.TRAN_COMMIT_CLASS_COMMIT_INSTANCE:
-                    return TRANSACTION_READ_COMMITTED;
-
-                case CUBRIDIsolationLevel.TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE:
-                    return TRANSACTION_READ_UNCOMMITTED;
-
-                case CUBRIDIsolationLevel.TRAN_REPEATABLE_READ:
-                    return TRANSACTION_REPEATABLE_READ;
-
-                case CUBRIDIsolationLevel.TRAN_READ_COMMITTED:
-                    return TRANSACTION_READ_COMMITTED;
-
-                case CUBRIDIsolationLevel.TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
-                    return TRANSACTION_READ_UNCOMMITTED;
-
-                case CUBRIDIsolationLevel.TRAN_SERIALIZABLE:
-                    return TRANSACTION_SERIALIZABLE;
-
-                default:
-                    return TRANSACTION_NONE;
-            }
+            default:
+                return TRANSACTION_NONE;
         }
     }
 
