@@ -2100,13 +2100,23 @@ public class CUBRIDResultSet implements ResultSet {
     }
 
     /* JDK 1.6 */
+    @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        checkIsOpen();
+        return iface.isAssignableFrom(getClass());
     }
 
     /* JDK 1.6 */
+    @Override
     public <T> T unwrap(Class<T> iface) throws SQLException {
-        throw new SQLException(new java.lang.UnsupportedOperationException());
+        checkIsOpen();
+        if (iface.isAssignableFrom(getClass())) {
+            return iface.cast(this);
+        }
+        throw new CUBRIDException(
+                CUBRIDJDBCErrorCode.invalid_value,
+                CUBRIDException.cannotUnwrapMessage(iface),
+                null);
     }
 
     /* JDK 1.7 */
