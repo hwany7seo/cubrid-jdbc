@@ -32,6 +32,8 @@
 package cubrid.jdbc.driver;
 
 import cubrid.jdbc.jci.UConnection;
+import cubrid.jdbc.jci.UError;
+import cubrid.jdbc.jci.UErrorCode;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Vector;
@@ -88,6 +90,12 @@ public class CUBRIDPooledConnection implements PooledConnection {
 
         if (u_con.check_cas() == false) {
             u_con.resetConnection();
+        }
+
+        u_con.resetDbParameters();
+        UError error = u_con.getRecentError();
+        if (error.getErrorCode() != UErrorCode.ER_NO_ERROR) {
+            throw new CUBRIDException(error);
         }
 
         cubConnection = new CUBRIDConnectionWrapperPooling(u_con, null, null, this);

@@ -137,8 +137,8 @@ public abstract class UConnection {
     protected static final byte END_TRAN_COMMIT = 1;
     protected static final byte END_TRAN_ROLLBACK = 2;
 
-    protected static final int LOCK_TIMEOUT_NOT_USED = -2;
-    protected static final int LOCK_TIMEOUT_INFINITE = -1;
+    public static final int LOCK_TIMEOUT_NOT_USED = -2;
+    public static final int LOCK_TIMEOUT_INFINITE = -1;
 
     protected static final int SOCKET_TIMEOUT = 5000;
 
@@ -246,6 +246,11 @@ public abstract class UConnection {
 
     private int lastIsolationLevel;
     private int lastLockTimeout = LOCK_TIMEOUT_NOT_USED;
+    /* LOCK_TIMEOUT_NOT_USED is ambiguous on its own: it is both the initial state and a
+     * valid request meaning "go back to the broker default", and the two must be told
+     * apart when deciding whether the lockTimeout connection property still applies. */
+    private boolean lockTimeoutSetByUser = false;
+    private int casDefaultIsolationLevel = CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
 
     protected byte[] dbInfo;
     protected String dbname = "";
@@ -928,11 +933,7 @@ public abstract class UConnection {
             checkReconnect();
             if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) return;
 
-            outBuffer.newRequest(output, UFunctionCode.SET_DB_PARAMETER);
-            outBuffer.addInt(DB_PARAM_ISOLATION_LEVEL);
-            outBuffer.addInt(level);
-
-            send_recv_msg();
+            sendSetDbParameter(DB_PARAM_ISOLATION_LEVEL, level);
 
             lastIsolationLevel = level;
         } catch (UJciException e) {
@@ -946,6 +947,11 @@ public abstract class UConnection {
 
     public synchronized void setLockTimeout(int timeout) {
         errorHandler = new UError(this);
+
+        if (timeout < LOCK_TIMEOUT_NOT_USED) {
+            errorHandler.setErrorCode(UErrorCode.ER_INVALID_ARGUMENT);
+            return;
+        }
 
         if (lastLockTimeout != LOCK_TIMEOUT_NOT_USED && lastLockTimeout == timeout) {
             return;
@@ -961,14 +967,87 @@ public abstract class UConnection {
             checkReconnect();
             if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) return;
 
-            outBuffer.newRequest(output, UFunctionCode.SET_DB_PARAMETER);
-            outBuffer.addInt(DB_PARAM_LOCK_TIMEOUT);
-            outBuffer.addInt(timeout);
+            sendSetDbParameter(DB_PARAM_LOCK_TIMEOUT, timeout);
 
-            send_recv_msg();
+            lastLockTimeout = timeout;
+            lockTimeoutSetByUser = true;
+        } catch (UJciException e) {
+            logException(e);
+            e.toUError(errorHandler);
+        } catch (IOException e) {
+            logException(e);
+            errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+        }
+    }
 
-            if (timeout < 0) lastLockTimeout = LOCK_TIMEOUT_INFINITE;
-            else lastLockTimeout = timeout;
+    private void sendSetDbParameter(int paramName, int value) throws UJciException, IOException {
+        outBuffer.newRequest(output, UFunctionCode.SET_DB_PARAMETER);
+        outBuffer.addInt(paramName);
+        outBuffer.addInt(value);
+
+        send_recv_msg();
+    }
+
+    /*
+     * A CAS resets isolation level and lock timeout to the broker defaults whenever it
+     * is handed to a client, so both have to be pushed again right after (re)connecting.
+     * setIsolationLevel()/setLockTimeout() cannot be reused here: their duplicate-request
+     * guards would see the value we are restoring as already applied and send nothing.
+     */
+    protected void applyDbParameters() throws UJciException, IOException {
+        int isolationLevel = currentIsolationLevel();
+        if (isolationLevel != CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION) {
+            sendSetDbParameter(DB_PARAM_ISOLATION_LEVEL, isolationLevel);
+        }
+
+        int lockTimeout =
+                lockTimeoutSetByUser ? lastLockTimeout : connectionProperties.getLockTimeout();
+        if (lockTimeout != LOCK_TIMEOUT_NOT_USED) {
+            sendSetDbParameter(DB_PARAM_LOCK_TIMEOUT, lockTimeout);
+            lastLockTimeout = lockTimeout;
+        }
+    }
+
+    /*
+     * A pooled physical connection never goes back through the broker, so its CAS keeps
+     * the isolation level and lock timeout that the previous logical connection left on
+     * it. Handing the physical connection to a new logical connection therefore has to
+     * push this connection's own baseline back down, the way CCI does on
+     * cci_datasource_borrow.
+     */
+    public synchronized void resetDbParameters() {
+        errorHandler = new UError(this);
+
+        if (isClosed == true) {
+            errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
+            return;
+        }
+
+        if (casDefaultIsolationLevel == CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION) {
+            /* No logical connection has been handed out yet, so what the CAS reports now
+             * is the broker default that later borrows have to be restored to. */
+            casDefaultIsolationLevel = getIsolationLevel();
+            if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) {
+                return;
+            }
+        }
+
+        try {
+            setBeginTime();
+            checkReconnect();
+            if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR) return;
+
+            if (lastIsolationLevel != casDefaultIsolationLevel) {
+                sendSetDbParameter(DB_PARAM_ISOLATION_LEVEL, casDefaultIsolationLevel);
+                lastIsolationLevel = casDefaultIsolationLevel;
+            }
+
+            int lockTimeout = connectionProperties.getLockTimeout();
+            if (lockTimeoutSetByUser || lastLockTimeout != lockTimeout) {
+                sendSetDbParameter(DB_PARAM_LOCK_TIMEOUT, lockTimeout);
+                lastLockTimeout = lockTimeout;
+                lockTimeoutSetByUser = false;
+            }
         } catch (UJciException e) {
             logException(e);
             e.toUError(errorHandler);
@@ -1724,7 +1803,10 @@ public abstract class UConnection {
     public void setCUBRIDConnection(CUBRIDConnection con) {
         cubridcon = con;
         lastIsolationLevel = CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
-        lastLockTimeout = LOCK_TIMEOUT_NOT_USED;
+        /* the lockTimeout property was already pushed to the CAS by applyDbParameters(),
+         * so the baseline for a freshly wrapped connection is that value, not the sentinel */
+        lastLockTimeout = connectionProperties.getLockTimeout();
+        lockTimeoutSetByUser = false;
     }
 
     public CUBRIDConnection getCUBRIDConnection() {

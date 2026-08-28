@@ -273,12 +273,7 @@ public class UClientSideConnection extends UConnection {
         needReconnection = false;
         isClosed = false;
 
-        int isolationLevel = currentIsolationLevel();
-        if (isolationLevel != CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION)
-            setIsolationLevel(isolationLevel);
-
-        int lockTimeout = getLockTimeout();
-        if (lockTimeout != LOCK_TIMEOUT_NOT_USED) setLockTimeout(lockTimeout);
+        applyDbParameters();
         /*
          * if(!lastAutoCommit) setAutoCommit(lastAutoCommit);
          */
