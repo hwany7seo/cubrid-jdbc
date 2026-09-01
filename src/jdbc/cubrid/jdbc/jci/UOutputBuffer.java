@@ -497,7 +497,7 @@ class UOutputBuffer {
 
         int collection_size = 1;
         ByteArrayBuffer saveBuffer = dataBuffer;
-        dataBuffer = new ByteArrayBuffer();
+        dataBuffer = new ByteArrayBuffer(false);
         dataBuffer.writeByte((byte) data.getBaseType());
 
         switch (data.getBaseType()) {
