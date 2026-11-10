@@ -1872,6 +1872,9 @@ public class UStatement {
             errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
             return false;
         }
+
+        relatedConnection.removeDeferredCursorClose(this);
+
         try {
             synchronized (relatedConnection) {
                 outBuffer.newRequest(UFunctionCode.NEXT_RESULT);
