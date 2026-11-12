@@ -7,9 +7,15 @@ import cubrid.jdbc.driver.CUBRIDDriver;
 
 public class ConnectWorker {
     
-    private static final String CONNECTION_URL = "jdbc:cubrid:192.168.3.32:33000:demodb:::";
-    private static String USER = "dba";
-    private static String PASSWORD = "";
+    // JDBC_URL 환경변수(또는 -DJDBC_URL=...)로 덮어쓸 수 있다.
+    private static final String CONNECTION_URL = System.getProperty("JDBC_URL",
+            System.getenv("JDBC_URL") != null ? System.getenv("JDBC_URL")
+                                              : "jdbc:cubrid:localhost:33000:demodb:::");
+    // JDBC_USER / JDBC_PASSWORD 환경변수(또는 -D)로 덮어쓸 수 있다.
+    private static String USER = System.getProperty("JDBC_USER",
+            System.getenv("JDBC_USER") != null ? System.getenv("JDBC_USER") : "dba");
+    private static String PASSWORD = System.getProperty("JDBC_PASSWORD",
+            System.getenv("JDBC_PASSWORD") != null ? System.getenv("JDBC_PASSWORD") : "");
     
     public static Connection getConnect() {
         Connection conn = null;
