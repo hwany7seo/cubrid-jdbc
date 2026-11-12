@@ -632,6 +632,11 @@ public class UStatement {
             errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
             return;
         }
+        if (cursorClosePending && relatedConnection.isConnectedToProxy()) {
+            synchronized (relatedConnection) {
+                relatedConnection.flushDeferredCursorClose();
+            }
+        }
         relatedConnection.pooled_ustmts.remove(this);
         /* statement (handle) being freed �넂 drop any deferred cursor close for it */
         relatedConnection.removeDeferredCursorClose(this);
