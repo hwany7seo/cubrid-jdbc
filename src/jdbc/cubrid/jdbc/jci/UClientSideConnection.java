@@ -355,7 +355,7 @@ public class UClientSideConnection extends UConnection {
                         clearDeferredCursorClose();
                     }
                     /* commit: HOLD_CURSORS_OVER_COMMIT cursors must survive the
-                     * commit �넂 do NOT close them here (H1). */
+                     * commit → do NOT close them here (H1). */
                     outBuffer.newRequest(output, UFunctionCode.END_TRANSACTION);
                     outBuffer.addByte((type == true) ? END_TRAN_COMMIT : END_TRAN_ROLLBACK);
 

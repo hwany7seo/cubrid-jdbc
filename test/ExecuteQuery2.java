@@ -11,12 +11,11 @@ import java.util.Scanner;
 import java.util.regex.Pattern;
 
 import cubrid.jdbc.driver.*;
-import cubrid.jdbc.log.BasicLogger;
-import cubrid.jdbc.log.Log;
+import java.util.logging.Logger;
 
 public class ExecuteQuery2 {
     private static final String URL = "jdbc:CUBRID:192.168.2.32:33000:demodb:::";
-    private static BasicLogger log;
+    private static final Logger log = Logger.getLogger(ExecuteQuery2.class.getName());
     protected static ConnectionProperties connectionProperties = new ConnectionProperties();
     
     public static void main(String arg[]) throws Exception {
@@ -49,12 +48,12 @@ public class ExecuteQuery2 {
 //        }
         
         for (String file : sqlList.keySet()) {
-            getLogger().logInfo("file : " + file);
+            getLogger().info("file : " + file);
             System.out.println("file : " + file);
             for (String sqlQuery : sqlList.get(file)) {
                 //System.out.println("sqlQuery : " + sqlQuery);
                 try {
-                    getLogger().logInfo("sqlQuery : " + sqlQuery);
+                    getLogger().info("sqlQuery : " + sqlQuery);
                     if (sqlQuery.contains("rollback")) {
                         conn.rollback();
                     } else if (sqlQuery.contains("autocommit off")) {
@@ -73,7 +72,7 @@ public class ExecuteQuery2 {
                         }
                     }
                 } catch (Exception e) {
-                    getLogger().logError(e.getMessage());
+                    getLogger().severe(e.getMessage());
     //                System.out.println(sqlQuery);
     //                e.printStackTrace();
                 } finally {
@@ -174,11 +173,7 @@ public class ExecuteQuery2 {
         return isExist;
     }
     
-    protected static Log getLogger() {
-        if (log == null) {
-            System.out.println("connectionProperties.getLogFile() : " + connectionProperties.getLogFile());
-            log = new BasicLogger(connectionProperties.getLogFile());
-        }
+    protected static Logger getLogger() {
         return log;
     }
 }

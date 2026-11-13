@@ -638,7 +638,7 @@ public class UStatement {
             }
         }
         relatedConnection.pooled_ustmts.remove(this);
-        /* statement (handle) being freed �넂 drop any deferred cursor close for it */
+        /* statement (handle) being freed → drop any deferred cursor close for it */
         relatedConnection.removeDeferredCursorClose(this);
         holdableCursorOpenMillis = 0;
         currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
