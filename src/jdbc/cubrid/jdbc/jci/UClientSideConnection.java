@@ -337,6 +337,30 @@ public class UClientSideConnection extends UConnection {
         if (needReconnection == true) return;
 
         try {
+            /* Send the deferred holdable cursor closes before ending the
+             * transaction. They are result sets the application has already
+             * closed, so this keeps H1 (open holdable cursors survive commit),
+             * and it releases them while this client still holds the CAS:
+             * otherwise they keep the CAS bound after the transaction
+             * (KEEP_CONNECTION=AUTO cannot hand it to another client, a shard
+             * proxy keeps the context on that shard), and after a rollback the
+             * results of an earlier committed transaction, which the server
+             * keeps, would never be closed.
+             * In autocommit mode the driver ends the transaction itself after
+             * every statement; there the pending closes stay deferred (that is
+             * where batching saves the round trips) and are bounded by
+             * DEFERRED_CURSOR_CLOSE_MAX and the scheduler TTL, except on a shard
+             * proxy, which must not keep the context on a shard. */
+            if (client != null
+                    && hasDeferredCursorClose()
+                    && (type == false || !getAutoCommit() || isConnectedToProxy())) {
+                flushDeferredCursorClose();
+                if (client == null || isClosed) {
+                    errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+                    return;
+                }
+            }
+
             if (client != null && getCASInfoStatus() != CAS_INFO_STATUS_INACTIVE) {
                 setBeginTime();
                 checkReconnect();
@@ -351,11 +375,6 @@ public class UClientSideConnection extends UConnection {
                             throw new Exception("Check It Out!");
                         }
                     }
-                    if (type == false) {
-                        clearDeferredCursorClose();
-                    }
-                    /* commit: HOLD_CURSORS_OVER_COMMIT cursors must survive the
-                     * commit → do NOT close them here (H1). */
                     outBuffer.newRequest(output, UFunctionCode.END_TRANSACTION);
                     outBuffer.addByte((type == true) ? END_TRAN_COMMIT : END_TRAN_ROLLBACK);
 

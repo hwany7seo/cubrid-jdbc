@@ -57,7 +57,6 @@ import java.util.Date;
 import java.util.Vector;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.ArrayList;
 import javax.transaction.xa.Xid;
 
 public abstract class UConnection {
@@ -274,7 +273,9 @@ public abstract class UConnection {
     Vector<UStatement> pooled_ustmts;
     Vector<Integer> deferred_close_handle;
     private boolean holdableRegistered = false;
-    
+    /* a request is on the wire; read by the scheduler thread without the monitor */
+    private volatile boolean requestInProgress = false;
+
     private int deferredCursorCloseCount = 0;
     private static final int DEFERRED_CURSOR_CLOSE_MAX = 5;
 
@@ -1887,12 +1888,17 @@ public abstract class UConnection {
     UInputBuffer send_recv_msg(boolean recv_result, int timeout) throws UJciException, IOException {
         byte prev_casinfo[] = casInfo;
         UInputBuffer inputBuffer;
-        outBuffer.sendData();
-        /* set cas info to UConnection member variable and return InputBuffer */
-        if (timeout > 0) {
-            inputBuffer = receive(timeout * 1000 + READ_TIMEOUT);
-        } else {
-            inputBuffer = receive(0);
+        requestInProgress = true;
+        try {
+            outBuffer.sendData();
+            /* set cas info to UConnection member variable and return InputBuffer */
+            if (timeout > 0) {
+                inputBuffer = receive(timeout * 1000 + READ_TIMEOUT);
+            } else {
+                inputBuffer = receive(0);
+            }
+        } finally {
+            requestInProgress = false;
         }
 
         if (UJCIUtil.isConsoleDebug()) {
@@ -1910,9 +1916,15 @@ public abstract class UConnection {
 
     UInputBuffer send_recv_msg(boolean recv_result) throws UJciException, IOException {
         byte prev_casinfo[] = casInfo;
-        outBuffer.sendData();
-        /* set cas info to UConnection member variable and return InputBuffer */
-        UInputBuffer inputBuffer = receive(0);
+        UInputBuffer inputBuffer;
+        requestInProgress = true;
+        try {
+            outBuffer.sendData();
+            /* set cas info to UConnection member variable and return InputBuffer */
+            inputBuffer = receive(0);
+        } finally {
+            requestInProgress = false;
+        }
 
         if (UJCIUtil.isConsoleDebug()) {
             printCasInfo(prev_casinfo, casInfo);
@@ -1965,56 +1977,103 @@ public abstract class UConnection {
      *
      * Instead of a synchronous CURSOR_CLOSE round-trip per holdable
      * ResultSet.close(), the statement is marked (UStatement.cursorClosePending)
-     * and the batch is flushed as one multi-id CAS_FC_CURSOR_CLOSE. flush iterates
-     * pooled_ustmts and closes only statements still pending and not closed, so a
-     * re-executed (live) cursor is never closed by a stale entry. Never called at
-     * commit (H1: holdable cursors survive commit). Enabled only when the broker
-     * understands V13; otherwise closeCursor sends immediately (fallback).
+     * and the pending ones are flushed as one multi-id CAS_FC_CURSOR_CLOSE. flush
+     * iterates pooled_ustmts and closes only statements still pending and not
+     * closed, so a re-executed (live) cursor is never closed by a stale entry.
+     *
+     * Only result sets the application has already closed are ever sent: an open
+     * holdable cursor is never closed by the driver (H1).
+     *
+     * A holdable result the CAS still holds keeps the CAS bound to this client
+     * (as_info->num_holdable_results > 0: a KEEP_CONNECTION=AUTO CAS is not handed
+     * to another client, the shard proxy keeps the context on that CAS and shard).
+     * So the pending closes are flushed
+     *   - when DEFERRED_CURSOR_CLOSE_MAX are pending,
+     *   - before END_TRAN (commit and rollback, UClientSideConnection.endTransaction),
+     *   - by the scheduler once the oldest has waited the TTL (UJCIManager),
+     * and on a shard proxy a close is deferred only inside a transaction.
+     *
+     * All state below is guarded by this UConnection's monitor, the same lock the
+     * request paths (execute, fetch, end transaction) use for the socket.
      */
     public boolean supportsBatchedCursorClose() {
-        return protocolVersion >= PROTOCOL_V13;
+        return brokerProtocolVersion() >= PROTOCOL_V13;
     }
 
-    void addDeferredCursorClose(UStatement stmt) {
+    /*
+     * Defer the CURSOR_CLOSE of stmt's holdable result if allowed now; returns
+     * false when the caller must send it at once.
+     */
+    synchronized boolean deferCursorClose(UStatement stmt) {
+        if (!canDeferCursorClose()) {
+            return false;
+        }
+        addDeferredCursorClose(stmt);
+        return true;
+    }
+
+    /* whether the close of a holdable result may be deferred now */
+    private boolean canDeferCursorClose() {
+        if (!supportsBatchedCursorClose()) {
+            return false;
+        }
+        /* outside a transaction (autocommit, or a close after commit) the proxy
+         * would keep the context on this shard for the pending result: the next
+         * query to another shard fails with "Shard id couldn't be changed in a
+         * transaction". Send it at once there. */
+        if (isConnectedToProxy() && getCASInfoStatus() != CAS_INFO_STATUS_ACTIVE) {
+            return false;
+        }
+        return true;
+    }
+
+    private void addDeferredCursorClose(UStatement stmt) {
         if (stmt == null || stmt.cursorClosePending) {
             return;
         }
         stmt.cursorClosePending = true;
+        stmt.cursorClosePendingMillis = System.currentTimeMillis();
         deferredCursorCloseCount++;
+        registerDeferredCursorClose();
         if (deferredCursorCloseCount >= DEFERRED_CURSOR_CLOSE_MAX) {
             flushDeferredCursorClose();
         }
     }
 
-    void removeDeferredCursorClose(UStatement stmt) {
+    synchronized void removeDeferredCursorClose(UStatement stmt) {
         if (stmt == null || !stmt.cursorClosePending) {
             return;
         }
         stmt.cursorClosePending = false;
+        stmt.cursorClosePendingMillis = 0;
         if (deferredCursorCloseCount > 0) {
             deferredCursorCloseCount--;
         }
     }
 
-    void clearDeferredCursorClose() {
+    synchronized boolean hasDeferredCursorClose() {
+        return deferredCursorCloseCount > 0;
+    }
+
+    private void clearDeferredCursorClose() {
         if (pooled_ustmts != null) {
             for (int i = 0; i < pooled_ustmts.size(); i++) {
                 UStatement s = pooled_ustmts.get(i);
                 if (s != null) {
                     s.cursorClosePending = false;
-                    s.holdableCursorOpenMillis = 0;
+                    s.cursorClosePendingMillis = 0;
                 }
             }
         }
         deferredCursorCloseCount = 0;
     }
 
-    void flushDeferredCursorClose() {
+    synchronized void flushDeferredCursorClose() {
         if (deferredCursorCloseCount <= 0 || pooled_ustmts == null) {
             deferredCursorCloseCount = 0;
             return;
         }
-        if (isConnectedToCubrid() == false) {
+        if (client == null || isConnectedToCubrid() == false) {
             clearDeferredCursorClose();
             return;
         }
@@ -2039,76 +2098,52 @@ public abstract class UConnection {
         } catch (IOException e) {
             logException(e);
         } finally {
-            /* only the pending (closed) statements were sent; reset just those so
-             * still-open (non-pending) holdable cursors remain tracked. */
-            for (int i = 0; i < pooled_ustmts.size(); i++) {
-                UStatement s = pooled_ustmts.get(i);
-                if (s != null && s.cursorClosePending) {
-                    s.cursorClosePending = false;
-                    s.holdableCursorOpenMillis = 0;
-                }
-            }
-            deferredCursorCloseCount = 0;
+            /* the marks are cleared whether the request succeeded or not; the
+             * server frees what was not closed when the connection ends. */
+            clearDeferredCursorClose();
         }
     }
 
-    void registerHoldableCursors() {
+    private void registerDeferredCursorClose() {
         if (!holdableRegistered) {
             holdableRegistered = true;
             UJCIManager.registerHoldableConn(this);
         }
     }
 
-    void closeExpiredHoldableCursors(long ttlMillis) {
-        if (pooled_ustmts == null || isClosed || needReconnection) {
+    /*
+     * Called by the scheduler thread (UJCIManager): flush the pending closes once
+     * the oldest one has waited ttlMillis. Only already closed result sets are
+     * sent. A connection that is running a request is skipped instead of waiting
+     * for its monitor, so a long query on one connection does not stall the
+     * shared worker thread.
+     */
+    void flushExpiredDeferredCursorClose(long ttlMillis) {
+        if (pooled_ustmts == null || isClosed || needReconnection || requestInProgress) {
             return;
         }
-        long now = System.currentTimeMillis();
         synchronized (this) {
-            if (isClosed
+            if (deferredCursorCloseCount <= 0
+                    || isClosed
                     || needReconnection
                     || client == null
                     || isConnectedToCubrid() == false) {
                 return;
             }
-            UFunctionCode code = UFunctionCode.CURSOR_CLOSE;
-            ArrayList<UStatement> closeList = null;
+            long now = System.currentTimeMillis();
+            boolean expired = false;
             for (int i = 0; i < pooled_ustmts.size(); i++) {
                 UStatement s = pooled_ustmts.get(i);
                 if (s != null
-                        && !s.isClosed()
-                        && s.holdableCursorOpenMillis > 0
-                        && (now - s.holdableCursorOpenMillis) >= ttlMillis) {
-                    if (closeList == null) {
-                    	closeList = new ArrayList<UStatement>();
-                    }
-                    closeList.add(s);
+                        && s.cursorClosePending
+                        && s.cursorClosePendingMillis > 0
+                        && (now - s.cursorClosePendingMillis) >= ttlMillis) {
+                    expired = true;
+                    break;
                 }
             }
-            if (closeList == null) {
-                return;
-            }
-            try {
-                outBuffer.newRequest(code);
-                for (int i = 0; i < closeList.size(); i++) {
-                    outBuffer.addInt(closeList.get(i).getServerHandle());
-                }
-                send_recv_msg();
-            } catch (UJciException e) {
-                logException(e);
-            } catch (IOException e) {
-                logException(e);
-            } finally {
-                for (int i = 0; i < closeList.size(); i++) {
-                    UStatement s = closeList.get(i);
-                    if (s.cursorClosePending) {
-                        s.cursorClosePending = false;
-                        if (deferredCursorCloseCount > 0) {
-                            deferredCursorCloseCount--;
-                        }
-                    }
-                    s.holdableCursorOpenMillis = 0;
-                }
+            if (expired) {
+                flushDeferredCursorClose();
             }
         }
     }

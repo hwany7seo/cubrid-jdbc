@@ -51,12 +51,10 @@ public abstract class UJCIManager {
     static ArrayList<UUrlCache> url_cache_remove_list;
     static ArrayList<WeakReference<UConnection>> holdable_conn_list;
 
-    // static final long HOLDABLE_CURSOR_TTL_MILLIS =
-    //         Long.getLong("cubrid.holdable.cursor.ttl.millis", 86400000L);
     static final long HOLDABLE_CURSOR_TTL_MILLIS =
-            Long.getLong("cubrid.holdable.cursor.ttl.millis", 40000L);
+            Long.getLong("cubrid.holdable.cursor.ttl.millis", 5000L); //86400000L This needs to be fixed by the time of release.
     static final long HOLDABLE_CURSOR_SCAN_TICKS =
-            Long.getLong("cubrid.holdable.cursor.scan.sec", 5L);
+            Long.getLong("cubrid.holdable.cursor.scan.sec", 1L); // 5L This needs to be fixed by the time of release.
 
     static JdbcCacheWorker CACHE_Manager;
     static boolean result_cache_enable = true;
@@ -134,7 +132,7 @@ public abstract class UJCIManager {
             UConnection c = snapshot.get(i).get();
             if (c == null) continue;
             try {
-                c.closeExpiredHoldableCursors(HOLDABLE_CURSOR_TTL_MILLIS);
+                c.flushExpiredDeferredCursorClose(HOLDABLE_CURSOR_TTL_MILLIS);
             } catch (Exception e) {
             }
         }
