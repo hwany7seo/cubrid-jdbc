@@ -333,7 +333,7 @@ class UInputBuffer {
         }
         cal.set(Calendar.MILLISECOND, 0);
 
-        return UDateTimeFields.ofDate(cal.getTimeInMillis(), year, month, day);
+        return keepZeroDate(UDateTimeFields.ofDate(cal.getTimeInMillis(), year, month, day));
     }
 
     UDateTimeFields readTime() throws UJciException {
@@ -379,8 +379,18 @@ class UInputBuffer {
         }
         cal.set(Calendar.MILLISECOND, 0);
 
-        return UDateTimeFields.ofTimestamp(
-                cal.getTimeInMillis(), year, month, day, hour, minute, second);
+        return keepZeroDate(
+                UDateTimeFields.ofTimestamp(
+                        cal.getTimeInMillis(), year, month, day, hour, minute, second));
+    }
+
+    /* convertToSkip: the value keeps its zero date and shows it as it is (UDateTimeFields.toSqlValue). */
+    private UDateTimeFields keepZeroDate(UDateTimeFields fields) {
+        if (uconn.getZeroDateTimeBehavior()
+                .equals(UConnection.ZERO_DATETIME_BEHAVIOR_CONVERT_TO_SKIP)) {
+            fields.keepZeroDate();
+        }
+        return fields;
     }
 
     UDateTimeTzFields readTimestamptz(int size) throws UJciException {
@@ -425,8 +435,16 @@ class UInputBuffer {
         }
         cal.set(Calendar.MILLISECOND, millisecond);
 
-        return UDateTimeFields.ofDatetime(
-                cal.getTimeInMillis(), year, month, day, hour, minute, second, millisecond);
+        return keepZeroDate(
+                UDateTimeFields.ofDatetime(
+                        cal.getTimeInMillis(),
+                        year,
+                        month,
+                        day,
+                        hour,
+                        minute,
+                        second,
+                        millisecond));
     }
 
     UDateTimeTzFields readDatetimetz(int size) throws UJciException {

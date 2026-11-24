@@ -187,6 +187,8 @@ public abstract class UConnection {
     public static final String ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL = "convertToNull";
     public static final String ZERO_DATETIME_BEHAVIOR_EXCEPTION = "exception";
     public static final String ZERO_DATETIME_BEHAVIOR_ROUND = "round";
+    /* show a zero date as it is ("0000-00-00 ..."): getObject and getString give it as a String */
+    public static final String ZERO_DATETIME_BEHAVIOR_CONVERT_TO_SKIP = "convertToSkip";
 
     public static final String RESULT_WITH_CUBRID_TYPES_YES = "yes";
     public static final String RESULT_WITH_CUBRID_TYPES_NO = "no";

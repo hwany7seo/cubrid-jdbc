@@ -68,6 +68,8 @@ final class UDateTimeFields implements UDateTimeValue {
     private final int minute;
     private final int second;
     private final int millisecond;
+    /* zeroDateTimeBehavior=convertToSkip: a zero date shows as it is, not as the rounded value */
+    private boolean keepsZeroDate;
 
     private UDateTimeFields(
             byte type,
@@ -156,8 +158,44 @@ final class UDateTimeFields implements UDateTimeValue {
         return hasDate() && year == 0 && month == 0 && day == 0;
     }
 
+    void keepZeroDate() {
+        keepsZeroDate = true;
+    }
+
+    /*
+     * The zero date as text, in the form Timestamp.toString() and Date.toString() give a value:
+     * "0000-00-00" for a DATE, "0000-00-00 hh:mm:ss.f" for the others. Null when this is no zero
+     * date kept by convertToSkip.
+     */
+    String zeroDateText() {
+        if (!keepsZeroDate || !isZeroDate()) {
+            return null;
+        }
+        if (type == UUType.U_TYPE_DATE) {
+            return ZERO_DATE_TEXT;
+        }
+        String fraction = "0";
+        if (millisecond != 0) {
+            fraction = String.format(Locale.ROOT, "%03d", millisecond).replaceAll("0+$", "");
+        }
+        return String.format(
+                Locale.ROOT,
+                "%s %02d:%02d:%02d.%s",
+                ZERO_DATE_TEXT,
+                hour,
+                minute,
+                second,
+                fraction);
+    }
+
+    static final String ZERO_DATE_TEXT = "0000-00-00";
+
     @Override
     public Object toSqlValue() {
+        String zero = zeroDateText();
+        if (zero != null) {
+            return zero;
+        }
         switch (type) {
             case UUType.U_TYPE_DATE:
                 return new Date(epoch);
@@ -172,6 +210,10 @@ final class UDateTimeFields implements UDateTimeValue {
 
     @Override
     public Object toSqlValue(TimeZone zone) {
+        String zero = zeroDateText();
+        if (zero != null) {
+            return zero;
+        }
         return new UDateTimeFields(
                         type, epochIn(zone), year, month, day, hour, minute, second, millisecond)
                 .toSqlValue();

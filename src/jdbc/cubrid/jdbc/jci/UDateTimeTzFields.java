@@ -63,6 +63,10 @@ final class UDateTimeTzFields implements UDateTimeValue {
 
     @Override
     public Object toSqlValue() {
+        String zero = fields.zeroDateText();
+        if (zero != null) {
+            return zero + " " + timezone;
+        }
         return CUBRIDTimestamptz.valueOf((CUBRIDTimestamp) fields.toSqlValue(), timezone);
     }
 

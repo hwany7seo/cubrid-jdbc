@@ -348,7 +348,8 @@ public class ConnectionProperties {
                 String behavior = (String) o;
                 if (behavior.equals(UConnection.ZERO_DATETIME_BEHAVIOR_CONVERT_TO_NULL)
                         || behavior.equals(UConnection.ZERO_DATETIME_BEHAVIOR_EXCEPTION)
-                        || behavior.equals(UConnection.ZERO_DATETIME_BEHAVIOR_ROUND)) {
+                        || behavior.equals(UConnection.ZERO_DATETIME_BEHAVIOR_ROUND)
+                        || behavior.equals(UConnection.ZERO_DATETIME_BEHAVIOR_CONVERT_TO_SKIP)) {
                     return true;
                 }
             }

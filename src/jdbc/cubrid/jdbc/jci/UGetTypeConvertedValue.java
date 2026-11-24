@@ -161,6 +161,7 @@ public abstract class UGetTypeConvertedValue {
         else if (data instanceof Date) return new Date(((Date) data).getTime());
         else if (data instanceof Timestamp) return new Date(((Timestamp) data).getTime());
         else if (data instanceof String) {
+            checkZeroDateText((String) data);
             try {
                 return Date.valueOf((String) data);
             } catch (IllegalArgumentException e) {
@@ -292,6 +293,7 @@ public abstract class UGetTypeConvertedValue {
         if (data == null) return null;
         else if (data instanceof Time) return new Time(((Time) data).getTime());
         else if (data instanceof String) {
+            checkZeroDateText((String) data);
             try {
                 return Time.valueOf((String) data);
             } catch (IllegalArgumentException e) {
@@ -305,6 +307,7 @@ public abstract class UGetTypeConvertedValue {
         if (data == null) return null;
         else if (data instanceof Timestamp) return new Timestamp(((Timestamp) data).getTime());
         else if (data instanceof String) {
+            checkZeroDateText((String) data);
             try {
                 return Timestamp.valueOf((String) data);
             } catch (IllegalArgumentException e) {
@@ -317,6 +320,7 @@ public abstract class UGetTypeConvertedValue {
 
     public static Date getDate(Object data, TimeZone zone) throws UJciException {
         if (data instanceof String) {
+            checkZeroDateText((String) data);
             return dateIn((String) data, zone);
         }
         return getDate(inZone(data, zone));
@@ -324,6 +328,7 @@ public abstract class UGetTypeConvertedValue {
 
     public static Time getTime(Object data, TimeZone zone) throws UJciException {
         if (data instanceof String) {
+            checkZeroDateText((String) data);
             return timeIn((String) data, zone);
         }
         return getTime(inZone(data, zone));
@@ -331,10 +336,25 @@ public abstract class UGetTypeConvertedValue {
 
     public static Timestamp getTimestamp(Object data, TimeZone zone) throws UJciException {
         if (data instanceof String) {
+            checkZeroDateText((String) data);
             return timestampIn((String) data, zone);
         }
         return getTimestamp(inZone(data, zone));
     }
+
+    /*
+     * A zero date that zeroDateTimeBehavior=convertToSkip shows as text cannot be a java.sql date
+     * either: getDate, getTime and getTimestamp give ER_ILLEGAL_TIMESTAMP for it, as the default
+     * behavior does.
+     */
+    private static void checkZeroDateText(String s) throws UJciException {
+        if (ZERO_DATE_TEXT.matcher(s).matches()) {
+            throw new UJciException(UErrorCode.ER_ILLEGAL_TIMESTAMP);
+        }
+    }
+
+    private static final java.util.regex.Pattern ZERO_DATE_TEXT =
+            java.util.regex.Pattern.compile("0000-00-00( \\d\\d:\\d\\d:\\d\\d\\.\\d+( .+)?)?");
 
     private static Object inZone(Object data, TimeZone zone) {
         return data instanceof UDateTimeValue ? ((UDateTimeValue) data).toSqlValue(zone) : data;
